@@ -1,0 +1,106 @@
+# ============================================================================
+# SHEEPCARE MVP — Docker Compose
+# Orquesta tres servicios: backend, frontend y OpenAgri Farm Calendar.
+#
+# Uso:
+#   1. .\setup_farmcalendar.ps1      (clona OpenAgri Farm Calendar)
+#   2. docker compose up -d          (levanta todo)
+#   3. http://localhost:5173/        (frontend)
+#   4. http://localhost:8000/docs    (backend API docs)
+#   5. http://localhost:8002/        (Farm Calendar web UI)
+# ============================================================================
+
+services:
+  # ── Backend (FastAPI) ─────────────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - sheepcare_data:/app/backend/data
+    environment:
+      - SHEEPCARE_DB_PATH=/app/backend/data/sheepcare.db
+      - FARMCALENDAR_API_URL=http://farmcalendar:8002/api/v1/
+      - REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+    restart: unless-stopped
+    networks:
+      - sheepcare_net
+
+  # ── Frontend (React + Nginx) ─────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - sheepcare_net
+
+  # ── OpenAgri Farm Calendar (Django) ──────────────────────────────────
+  # Requisito: ejecutar primero .\setup_farmcalendar.ps1 para clonar el repo
+  farmcalendar:
+    build:
+      context: ./farmcalendar
+    depends_on:
+      farmcalendar-db:
+        condition: service_healthy
+    env_file:
+      - ./farmcalendar/.env
+    environment:
+      - DJANGO_SETTINGS_MODULE=farm_calendar.settings
+      - PYTHONUNBUFFERED=1
+      - GATEKEEPER_LOGIN_URL=
+      - EXTRA_ALLOWED_HOSTS=farmcalendar,localhost,127.0.0.1
+      - APP_HOST=0.0.0.0
+      - APP_PORT=8002
+      - POSTGRES_HOST=farmcalendar-db
+      - POSTGRES_DB=farm_calendar
+      - POSTGRES_PORT=5432
+      - CSRF_TRUSTED_ORIGINS=http://localhost:5173,http://localhost:8002,http://localhost,http://127.0.0.1:5173,http://127.0.0.1:8002
+      - LOGIN_REDIRECT_URL=/calendar/
+    ports:
+      - "8002:8002"
+    volumes:
+      - farmcalendar_static:/var/www/static
+    working_dir: /var/www
+    command: >
+      sh -c "
+        python manage.py migrate --noinput &&
+        python create_default_user.py &&
+        python manage.py runserver 0.0.0.0:8002
+      "
+    restart: unless-stopped
+    networks:
+      - sheepcare_net
+
+  # ── Farm Calendar Database (PostgreSQL) ─────────────────────────────
+  farmcalendar-db:
+    image: postgres:16-alpine
+    env_file:
+      - ./farmcalendar/.env
+    environment:
+      - POSTGRES_DB=farm_calendar
+    volumes:
+      - farmcalendar_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U farmcalendar -d farm_calendar" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - sheepcare_net
+
+volumes:
+  sheepcare_data:
+  farmcalendar_static:
+  farmcalendar_pgdata:
+
+networks:
+  sheepcare_net:
+    driver: bridge

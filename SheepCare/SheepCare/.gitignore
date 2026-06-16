@@ -1,0 +1,65 @@
+# SHEEPCARE MVP
+.venv/
+venv/
+node_modules/
+dist/
+*.env
+__pycache__/
+*.pyc
+*.pyo
+*.db
+*.egg-info/
+
+# Farm Calendar (cloned from GitHub)
+/farmcalendar/
+
+# Installers / build artifacts
+installer/dist/
+installer/build/
+installer/pgsql/
+installer/assets/*.exe
+installer/docker-compose.yml
+installer/images/
+installer/launcher.ps1
+installer/stop.ps1
+
+# Docs — keep only the end-user PDF guide
+docs/*
+!docs/User guide.pdf
+
+# OSS documentation drafts / templates (working copies, not for repo)
+Open_Source_Software_Documentation_template_with_Examples_ESTRUS_APP.docx
+SheepCare_OSS_Documentation.docx
+SheepCare_OSS_Documentation.pdf
+
+# Tests (empty placeholder)
+backend/tests/
+
+# User uploads
+backend/data/uploads/
+
+# ML model (proprietary — distribute via installer only)
+*.joblib
+
+# Logs
+*.log
+
+# Certificates and keys
+*.crt
+*.key
+*.pem
+
+# SQLite WAL files
+*.db-shm
+*.db-wal
+
+# Claude Code local settings
+.claude/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
