@@ -3,6 +3,7 @@ Uploads API - File upload, parsing, and batch estrus detection.
 """
 
 import os
+import time
 import uuid
 from datetime import datetime
 from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile, File, Form
@@ -36,6 +37,9 @@ class UploadResponse(BaseModel):
     celo_count: int
     no_celo_count: int
     results: List[AnimalResultResponse]
+    upload_date: Optional[str] = None
+    processed_at: Optional[str] = None
+    processing_time_ms: float = 0
 
 
 class UploadSummaryResponse(BaseModel):
@@ -85,6 +89,8 @@ async def upload_file(
     4. Save detection results
     5. Return summary
     """
+    started_at = time.perf_counter()
+
     # 1. Validate farm
     farm = db.get_farm(farm_id)
     if not farm:
@@ -213,6 +219,7 @@ async def upload_file(
 
     # 7. Finalize upload record
     db.finalize_upload(upload_id, len(animals_data), celo_count, no_celo_count)
+    upload_record = db.get_upload(upload_id)
 
     # 8. Generate result Excel
     result_file_name = ""
@@ -292,6 +299,9 @@ async def upload_file(
         celo_count=celo_count,
         no_celo_count=no_celo_count,
         results=results,
+        upload_date=upload_record["upload_date"] if upload_record else None,
+        processed_at=upload_record["processed_at"] if upload_record else None,
+        processing_time_ms=(time.perf_counter() - started_at) * 1000,
     )
 
 

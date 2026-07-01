@@ -3,7 +3,9 @@
 ; ============================================================================
 
 #define AppName      "SheepCare"
-#define AppVersion   "1.0"
+#ifndef AppVersion
+  #define AppVersion "1.0"
+#endif
 #define AppPublisher "CNTA"
 #define AppURL       "http://localhost:8000"
 

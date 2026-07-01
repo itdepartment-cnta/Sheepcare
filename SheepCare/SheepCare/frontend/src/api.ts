@@ -39,6 +39,9 @@ export interface UploadResult {
     celo_count: number;
     no_celo_count: number;
     results: AnimalResult[];
+    upload_date: string | null;
+    processed_at: string | null;
+    processing_time_ms: number;
 }
 
 export interface UploadSummary {

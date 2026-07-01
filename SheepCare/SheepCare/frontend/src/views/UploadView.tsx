@@ -42,6 +42,11 @@ export default function UploadView() {
         }
     };
 
+    const formatProcessingTime = (ms: number | null | undefined) => {
+        if (ms == null || isNaN(ms)) return null;
+        return `Resultados obtenidos en ${Math.round(ms)} ms`;
+    };
+
     if (farms.length === 0) {
         return (
             <div className="text-center py-20">
@@ -165,6 +170,12 @@ export default function UploadView() {
                             </a>
                         )}
                     </div>
+
+                    {formatProcessingTime(result.processing_time_ms) && (
+                        <p className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-400">
+                            ⏱ {formatProcessingTime(result.processing_time_ms)}
+                        </p>
+                    )}
                 </div>
             )}
         </div>
