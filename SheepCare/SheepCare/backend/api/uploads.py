@@ -140,7 +140,7 @@ async def upload_file(
             os.remove(file_path)
         raise HTTPException(
             status_code=422,
-            detail="No valid animal data found in file. Check that column A has animal IDs and columns C+ have numeric values.",
+            detail="No valid animal data found in file. Check that column A has animal IDs and columns B+ have numeric values.",
         )
 
     # 5. Create upload record
@@ -183,8 +183,8 @@ async def upload_file(
         raw_array = np.array(values, dtype=np.float64)
         raw_array = raw_array[np.isfinite(raw_array)]
 
-        # El modelo espera exactamente 5 lecturas por animal
-        if len(raw_array) != 5:
+        # El modelo espera exactamente 2 lecturas por animal
+        if len(raw_array) != 2:
             continue
 
         try:

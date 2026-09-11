@@ -27,7 +27,7 @@ class FarmCalendarClient:
     def __init__(
         self,
         api_url: Optional[str] = None,
-        jwt_signing_key: str = "some-secret-key",
+        jwt_signing_key: Optional[str] = None,
     ) -> None:
         self.api_url = (
             api_url
@@ -38,7 +38,13 @@ class FarmCalendarClient:
         ).rstrip("/") + "/"
         self._session = requests.Session()
         self._authenticated = False
-        self._jwt_signing_key = jwt_signing_key
+        # Secreto compartido con Farm Calendar, generado y distribuido por el
+        # launcher (ver installer/launcher_app.py) — antes emitido por
+        # GateKeeper como fuente unica de verdad. El fallback solo cubre
+        # desarrollo local sin el launcher (docker-compose, `uvicorn --reload`).
+        self._jwt_signing_key = jwt_signing_key or os.environ.get(
+            "FARMCALENDAR_JWT_SECRET", "dev-only-insecure-secret"
+        )
 
     # ------------------------------------------------------------------
     # JWT Authentication (Farm Calendar uses JWT, not session login)

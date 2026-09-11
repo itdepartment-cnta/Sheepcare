@@ -105,7 +105,7 @@ class ModelsLoader:
         Se devuelve la probabilidad de clase 2 (Celo).
 
         Args:
-            features: 1-D numpy array of readings (5 valores por animal).
+            features: 1-D numpy array of readings (2 valores por animal).
 
         Returns:
             Probability of estrus/Celo (0.0 - 1.0), or None if no model loaded.

@@ -13,6 +13,9 @@ __pycache__/
 # Farm Calendar (cloned from GitHub)
 /farmcalendar/
 
+# GateKeeper (cloned from GitHub)
+/gatekeeper/
+
 # Installers / build artifacts
 installer/dist/
 installer/build/
@@ -40,6 +43,9 @@ backend/data/uploads/
 
 # ML model (proprietary — distribute via installer only)
 *.joblib
+
+# Excel files a user may pass/generate through backend/scripts/programa_celo.py
+backend/scripts/*.xlsx
 
 # Logs
 *.log
