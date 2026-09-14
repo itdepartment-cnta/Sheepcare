@@ -27,13 +27,16 @@ LOG_DIR  = os.path.join(APPDATA, "logs")
 JWT_SECRET_FILE       = os.path.join(APPDATA, "jwt_secret.key")
 GK_DJANGO_SECRET_FILE = os.path.join(APPDATA, "gatekeeper_django_secret.key")
 GK_ADMIN_FILE         = os.path.join(APPDATA, "gatekeeper_admin.key")
+FC_DJANGO_SECRET_FILE = os.path.join(APPDATA, "farmcalendar_django_secret.key")
 
 PGSQL_BIN      = os.path.join(BASE_DIR, "pgsql", "bin")
 PG_CTL         = os.path.join(PGSQL_BIN, "pg_ctl.exe")
 INITDB         = os.path.join(PGSQL_BIN, "initdb.exe")
 PSQL           = os.path.join(PGSQL_BIN, "psql.exe")
 BACKEND_EXE    = os.path.join(BASE_DIR, "backend",  "sheepcare-backend.exe")
-CALENDAR_EXE   = os.path.join(BASE_DIR, "calendar", "sheepcare-calendar.exe")
+CALENDAR_DIR   = os.path.join(BASE_DIR, "calendar")
+CALENDAR_EXE   = os.path.join(CALENDAR_DIR, "sheepcare-calendar.exe")
+CALENDAR_MANAGE_EXE = os.path.join(CALENDAR_DIR, "sheepcare-calendar-manage.exe")
 GATEKEEPER_DIR = os.path.join(BASE_DIR, "gatekeeper")
 GATEKEEPER_EXE = os.path.join(GATEKEEPER_DIR, "sheepcare-gatekeeper.exe")
 GATEKEEPER_MANAGE_EXE = os.path.join(GATEKEEPER_DIR, "sheepcare-gatekeeper-manage.exe")
@@ -213,6 +216,7 @@ def launch():
 
     # 2. Verificar binarios necesarios
     for exe, nombre in [(PG_CTL, "pg_ctl"), (BACKEND_EXE, "backend"), (CALENDAR_EXE, "calendar"),
+                        (CALENDAR_MANAGE_EXE, "calendar-manage"),
                         (GATEKEEPER_EXE, "gatekeeper"), (GATEKEEPER_MANAGE_EXE, "gatekeeper-manage")]:
         if not os.path.exists(exe):
             ui_fatal(f"No se encontró el archivo:\n{exe}\n\nReinicia la instalación.")
@@ -348,9 +352,13 @@ def launch():
 
     # 9. Arrancar FarmCalendar
     ui_status("Iniciando módulo de calendario...", "")
+    fc_django_secret = get_or_create_secret(FC_DJANGO_SECRET_FILE)
     cal_env = base_env.copy()
     cal_env["APP_PORT"] = "8002"
     cal_env["JWT_SIGNING_KEY"] = jwt_secret
+    cal_env["DJANGO_SECRET_KEY"] = fc_django_secret
+    run_cmd(CALENDAR_MANAGE_EXE, "migrate", "--noinput",
+            env=cal_env, cwd=CALENDAR_DIR, timeout=120)
     start_detached(CALENDAR_EXE, env=cal_env)
 
     # 10. Arrancar Backend

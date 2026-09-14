@@ -9,16 +9,17 @@ ROOT = os.path.abspath('.')
 # Recopilar onnxruntime ANTES del Analysis (PyInstaller 6.x requiere esto)
 ort_datas, ort_binaries, ort_hidden = collect_all('onnxruntime')
 sklearn_datas, sklearn_binaries, sklearn_hidden = collect_all('sklearn')
+scipy_datas, scipy_binaries, scipy_hidden = collect_all('scipy')
 
 a = Analysis(
     ['run_backend.py'],
     pathex=[ROOT],
-    binaries=ort_binaries + sklearn_binaries,
+    binaries=ort_binaries + sklearn_binaries + scipy_binaries,
     datas=[
         ('models',               'models'),
         ('frontend/dist',        'frontend/dist'),
         ('frontend/public/logos','frontend/dist/logos'),
-    ] + ort_datas + sklearn_datas,
+    ] + ort_datas + sklearn_datas + scipy_datas,
     hiddenimports=[
         # uvicorn
         'uvicorn.logging', 'uvicorn.loops', 'uvicorn.loops.auto',
@@ -44,10 +45,12 @@ a = Analysis(
         # backend
         'backend', 'backend.main', 'backend.api', 'backend.api.farms',
         'backend.api.uploads', 'backend.api.results', 'backend.api.animals',
-        'backend.api.settings', 'backend.core', 'backend.core.models_loader',
+        'backend.api.settings', 'backend.api.milk_quality', 'backend.core',
+        'backend.core.models_loader', 'backend.core.spectral_model',
+        'backend.core.spectral_parser',
         'backend.data_access', 'backend.data_access.db_manager',
         'backend.data_access.sync_manager', 'backend.utils', 'backend.utils.helpers',
-    ] + ort_hidden + sklearn_hidden,
+    ] + ort_hidden + sklearn_hidden + scipy_hidden,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

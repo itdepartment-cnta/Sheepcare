@@ -9,6 +9,45 @@ import numpy as np
 from typing import Optional, Any
 
 
+def _log(msg: str) -> None:
+    try:
+        log = os.path.join(os.environ.get("APPDATA", ""), "SheepCare", "model_load.log")
+        with open(log, "a", encoding="utf-8") as f:
+            f.write(msg + "\n")
+    except Exception:
+        pass
+
+
+def resolve_models_dir() -> str:
+    """
+    Resolve the `models/` directory both in dev and frozen (PyInstaller) mode.
+
+    Tries multiple candidate locations in frozen mode because PyInstaller 6.x
+    layouts (onedir with `_internal/`) place data files differently depending
+    on build settings; falls back to a single `<project_root>/models` in dev.
+    """
+    if getattr(sys, "frozen", False):
+        exe_dir = os.path.dirname(sys.executable)
+        meipass = getattr(sys, "_MEIPASS", None)
+        _log(f"frozen=True  exe_dir={exe_dir}  _MEIPASS={meipass}")
+        for candidate in [
+            os.path.join(exe_dir, "_internal", "models"),
+            meipass and os.path.join(meipass, "models"),
+            os.path.join(exe_dir, "models"),
+        ]:
+            if candidate and os.path.exists(candidate):
+                _log(f"model_dir found: {candidate}")
+                return candidate
+        fallback = os.path.join(exe_dir, "_internal", "models")
+        _log(f"no candidate found, fallback: {fallback}")
+        return fallback
+    # Desarrollo: subir 3 niveles desde backend/core/models_loader.py
+    base_dir = os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    )
+    return os.path.join(base_dir, "models")
+
+
 class ModelsLoader:
     """
     Loads pre-trained ML models from disk and runs inference.
@@ -25,37 +64,11 @@ class ModelsLoader:
 
     @staticmethod
     def _log(msg: str) -> None:
-        try:
-            import os as _os
-            log = _os.path.join(_os.environ.get("APPDATA", ""), "SheepCare", "model_load.log")
-            with open(log, "a", encoding="utf-8") as f:
-                f.write(msg + "\n")
-        except Exception:
-            pass
+        _log(msg)
 
     @staticmethod
     def _default_model_path() -> str:
-        if getattr(sys, "frozen", False):
-            exe_dir = os.path.dirname(sys.executable)
-            meipass = getattr(sys, "_MEIPASS", None)
-            ModelsLoader._log(f"frozen=True  exe_dir={exe_dir}  _MEIPASS={meipass}")
-            # Try both locations: _internal/models (PyInstaller 6.x) and exe/models
-            for candidate in [
-                os.path.join(exe_dir, "_internal", "models"),
-                meipass and os.path.join(meipass, "models"),
-                os.path.join(exe_dir, "models"),
-            ]:
-                if candidate and os.path.exists(candidate):
-                    ModelsLoader._log(f"model_dir found: {candidate}")
-                    return candidate
-            fallback = os.path.join(exe_dir, "_internal", "models")
-            ModelsLoader._log(f"no candidate found, fallback: {fallback}")
-            return fallback
-        # Desarrollo: subir 3 niveles desde backend/core/models_loader.py
-        base_dir = os.path.dirname(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        )
-        return os.path.join(base_dir, "models")
+        return resolve_models_dir()
 
     def _load_model(self) -> None:
         """
