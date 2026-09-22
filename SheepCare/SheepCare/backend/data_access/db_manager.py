@@ -112,6 +112,28 @@ class DatabaseManager:
                 FOREIGN KEY (upload_id) REFERENCES uploads(id) ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS milk_quality_uploads (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                farm_id       INTEGER NOT NULL,
+                filename      TEXT    NOT NULL,
+                upload_date   DATETIME NOT NULL DEFAULT (datetime('now')),
+                processed_at  DATETIME,
+                total_samples INTEGER DEFAULT 0,
+                lower_count   INTEGER DEFAULT 0,
+                upper_count   INTEGER DEFAULT 0,
+                FOREIGN KEY (farm_id) REFERENCES farms(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS milk_quality_results (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                animal_id    INTEGER NOT NULL,
+                upload_id    INTEGER NOT NULL,
+                result       TEXT    NOT NULL CHECK (result IN ('Lower', 'Upper')),
+                created_at   DATETIME NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (animal_id) REFERENCES animals(id) ON DELETE CASCADE,
+                FOREIGN KEY (upload_id) REFERENCES milk_quality_uploads(id) ON DELETE CASCADE
+            );
+
             CREATE TABLE IF NOT EXISTS sync_logs (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
                 last_sync_at DATETIME NOT NULL DEFAULT (datetime('now')),
@@ -464,6 +486,104 @@ class DatabaseManager:
             """)
         row = cursor.fetchone()
         return dict(row) if row else None
+
+    # ------------------------------------------------------------------
+    # Milk Quality (SCC) Uploads & Results
+    # ------------------------------------------------------------------
+    def create_milk_quality_upload(self, farm_id: int, filename: str) -> int:
+        cursor = self.connection.cursor()
+        cursor.execute(
+            "INSERT INTO milk_quality_uploads (farm_id, filename) VALUES (?, ?)",
+            (farm_id, filename),
+        )
+        self.connection.commit()
+        return cursor.lastrowid
+
+    def finalize_milk_quality_upload(
+        self, upload_id: int, total_samples: int, lower_count: int, upper_count: int
+    ) -> None:
+        cursor = self.connection.cursor()
+        cursor.execute(
+            """UPDATE milk_quality_uploads
+               SET processed_at = datetime('now'),
+                   total_samples = ?,
+                   lower_count = ?,
+                   upper_count = ?
+               WHERE id = ?""",
+            (total_samples, lower_count, upper_count, upload_id),
+        )
+        self.connection.commit()
+
+    def get_milk_quality_upload(self, upload_id: int) -> Optional[Dict[str, Any]]:
+        cursor = self.connection.cursor()
+        cursor.execute(
+            """
+            SELECT u.*, f.name as farm_name
+            FROM milk_quality_uploads u
+            JOIN farms f ON u.farm_id = f.id
+            WHERE u.id = ?
+        """,
+            (upload_id,),
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def list_milk_quality_uploads(self, farm_id: Optional[int] = None) -> List[Dict[str, Any]]:
+        cursor = self.connection.cursor()
+        if farm_id:
+            cursor.execute(
+                """
+                SELECT u.*, f.name as farm_name
+                FROM milk_quality_uploads u
+                JOIN farms f ON u.farm_id = f.id
+                WHERE u.farm_id = ?
+                ORDER BY u.upload_date DESC
+            """,
+                (farm_id,),
+            )
+        else:
+            cursor.execute("""
+                SELECT u.*, f.name as farm_name
+                FROM milk_quality_uploads u
+                JOIN farms f ON u.farm_id = f.id
+                ORDER BY u.upload_date DESC
+            """)
+        return [dict(row) for row in cursor.fetchall()]
+
+    def save_milk_quality_result(self, animal_id: int, upload_id: int, result: str) -> int:
+        cursor = self.connection.cursor()
+        cursor.execute(
+            "INSERT INTO milk_quality_results (animal_id, upload_id, result) VALUES (?, ?, ?)",
+            (animal_id, upload_id, result),
+        )
+        self.connection.commit()
+        return cursor.lastrowid
+
+    def get_milk_quality_results(
+        self,
+        farm_id: Optional[int] = None,
+        upload_id: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        cursor = self.connection.cursor()
+        query = """
+            SELECT mr.*, a.external_tag as animal_tag, a.name as animal_name,
+                   u.filename, u.upload_date, f.name as farm_name
+            FROM milk_quality_results mr
+            JOIN animals a ON mr.animal_id = a.id
+            JOIN milk_quality_uploads u ON mr.upload_id = u.id
+            JOIN farms f ON u.farm_id = f.id
+            WHERE 1=1
+        """
+        params = []
+        if farm_id:
+            query += " AND u.farm_id = ?"
+            params.append(farm_id)
+        if upload_id:
+            query += " AND mr.upload_id = ?"
+            params.append(upload_id)
+        query += " ORDER BY mr.created_at DESC"
+        cursor.execute(query, params)
+        return [dict(row) for row in cursor.fetchall()]
 
     # ------------------------------------------------------------------
     # Sync tracking

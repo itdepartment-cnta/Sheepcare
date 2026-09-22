@@ -68,6 +68,65 @@ export const uploadsApi = {
     get: (id: number) => api.get(`/uploads/${id}`).then(r => r.data),
 };
 
+// ── Milk Quality ─────────────────────────────────────
+export interface MilkQualitySampleResult {
+    animal_id: string;
+    result: string;
+}
+
+export interface MilkQualityUploadResult {
+    upload_id: number;
+    farm_id: number;
+    filename: string;
+    result_file: string;
+    total_samples: number;
+    lower_count: number;
+    upper_count: number;
+    results: MilkQualitySampleResult[];
+    upload_date: string | null;
+    processed_at: string | null;
+    processing_time_ms: number;
+}
+
+export interface MilkQualityUploadSummary {
+    id: number;
+    farm_id: number;
+    farm_name: string;
+    filename: string;
+    upload_date: string;
+    processed_at: string | null;
+    total_samples: number;
+    lower_count: number;
+    upper_count: number;
+}
+
+export interface MilkQualityResult {
+    id: number;
+    animal_id: number;
+    upload_id: number;
+    result: string;
+    created_at: string;
+    animal_tag: string;
+    animal_name: string;
+    filename: string;
+    upload_date: string;
+    farm_name: string;
+}
+
+export const milkQualityApi = {
+    upload: (file: File, farmId: number) => {
+        const form = new FormData();
+        form.append('file', file);
+        form.append('farm_id', String(farmId));
+        return api.post<MilkQualityUploadResult>('/milk-quality/uploads/', form).then(r => r.data);
+    },
+    list: (farmId?: number) =>
+        api.get<MilkQualityUploadSummary[]>('/milk-quality/uploads/', { params: { farm_id: farmId } }).then(r => r.data),
+    get: (id: number) => api.get(`/milk-quality/uploads/${id}`).then(r => r.data),
+    results: (params?: { farm_id?: number; upload_id?: number }) =>
+        api.get<MilkQualityResult[]>('/milk-quality/results/', { params }).then(r => r.data),
+};
+
 // ── Results ──────────────────────────────────────────
 export interface DetectionResult {
     id: number;

@@ -20,22 +20,25 @@ $pgdata   = Join-Path $appdata 'pgdata'
 $logdir   = Join-Path $appdata 'logs'
 $dbpath   = Join-Path $appdata 'sheepcare.db'
 
-$pgBin    = Join-Path $pgsql 'bin'
-$pgCtl    = Join-Path $pgBin 'pg_ctl.exe'
-$initdb   = Join-Path $pgBin 'initdb.exe'
-$psql     = Join-Path $pgBin 'psql.exe'
-$backend  = Join-Path $dist 'backend\sheepcare-backend.exe'
-$calendar = Join-Path $dist 'calendar\sheepcare-calendar.exe'
+$pgBin      = Join-Path $pgsql 'bin'
+$pgCtl      = Join-Path $pgBin 'pg_ctl.exe'
+$initdb     = Join-Path $pgBin 'initdb.exe'
+$psql       = Join-Path $pgBin 'psql.exe'
+$backend    = Join-Path $dist 'backend\sheepcare-backend.exe'
+$calendar   = Join-Path $dist 'calendar\sheepcare-calendar.exe'
+$gatekeeper = Join-Path $dist 'gatekeeper\sheepcare-gatekeeper.exe'
+$gkManage   = Join-Path $dist 'gatekeeper\sheepcare-gatekeeper-manage.exe'
 
 $PG_PORT = 5434   # Puerto distinto al de produccion para no interferir
 $PG_USER = 'farmcalendar'; $PG_PASS = 'farmcalendar_pass'; $PG_DB = 'farm_calendar'
+$GK_USER = 'gatekeeper'; $GK_PASS = 'gatekeeper_pass'; $GK_DB = 'gatekeeper'; $GK_PORT = 8001
 $NO_WIN  = 0x08000000
 
 # ── Detener todo ──────────────────────────────────────────────────────────────
 if ($StopAll) {
     Write-Host "Deteniendo servicios de prueba..." -ForegroundColor Yellow
     & $pgCtl stop -D $pgdata -m fast 2>$null
-    Get-Process | Where-Object { $_.Path -like "*sheepcare-backend*" -or $_.Path -like "*sheepcare-calendar*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+    Get-Process | Where-Object { $_.Path -like "*sheepcare-backend*" -or $_.Path -like "*sheepcare-calendar*" -or $_.Path -like "*sheepcare-gatekeeper*" } | Stop-Process -Force -ErrorAction SilentlyContinue
     Write-Host "Detenido." -ForegroundColor Green
     exit 0
 }
@@ -59,8 +62,10 @@ Write-Host ""
 $missing = @()
 if (-not (Test-Path $backend))  { $missing += "dist\backend\sheepcare-backend.exe" }
 if (-not $BackendOnly) {
-    if (-not (Test-Path $calendar)) { $missing += "dist\calendar\sheepcare-calendar.exe" }
-    if (-not (Test-Path $pgCtl))    { $missing += "pgsql\bin\pg_ctl.exe" }
+    if (-not (Test-Path $calendar))   { $missing += "dist\calendar\sheepcare-calendar.exe" }
+    if (-not (Test-Path $gatekeeper)) { $missing += "dist\gatekeeper\sheepcare-gatekeeper.exe" }
+    if (-not (Test-Path $gkManage))   { $missing += "dist\gatekeeper\sheepcare-gatekeeper-manage.exe" }
+    if (-not (Test-Path $pgCtl))      { $missing += "pgsql\bin\pg_ctl.exe" }
 }
 if ($missing) {
     Write-Host "FALTAN ARCHIVOS:" -ForegroundColor Red
@@ -93,6 +98,46 @@ if (-not $BackendOnly) {
     # Crear BD (idempotente — ignorar error si ya existe)
     & $psql -U postgres -p $PG_PORT -c "CREATE USER $PG_USER WITH PASSWORD '$PG_PASS';" postgres 2>$null | Out-Null
     & $psql -U postgres -p $PG_PORT -c "CREATE DATABASE $PG_DB OWNER $PG_USER;" postgres 2>$null | Out-Null
+    & $psql -U postgres -p $PG_PORT -c "CREATE USER $GK_USER WITH PASSWORD '$GK_PASS';" postgres 2>$null | Out-Null
+    & $psql -U postgres -p $PG_PORT -c "CREATE DATABASE $GK_DB OWNER $GK_USER;" postgres 2>$null | Out-Null
+
+    # ── GateKeeper ────────────────────────────────────────────────────────────
+    Write-Host "[1.5] GateKeeper..." -ForegroundColor Yellow
+    $JWT_SECRET = "test-jwt-secret"
+    $gkEnv = [System.Collections.Generic.Dictionary[string,string]]::new()
+    $gkEnv["DATABASE_URL"] = "postgres://${GK_USER}:${GK_PASS}@127.0.0.1:${PG_PORT}/${GK_DB}"
+    $gkEnv["JWT_SIGNING_KEY"] = $JWT_SECRET
+    $gkEnv["JWT_ALG"] = "HS256"
+    $gkEnv["DJANGO_SECRET_KEY"] = "test-gatekeeper-django-secret"
+    $gkEnv["DJANGO_DEBUG"] = "True"
+    $gkEnv["APP_HOST"] = "127.0.0.1"
+    $gkEnv["APP_PORT"] = "$GK_PORT"
+    $gkEnv["DJANGO_SUPERUSER_USERNAME"] = "sheepcare-admin"
+    $gkEnv["DJANGO_SUPERUSER_EMAIL"] = "sheepcare-admin@localhost"
+    $gkEnv["DJANGO_SUPERUSER_PASSWORD"] = "test-admin-pass"
+
+    $gkPsi = New-Object System.Diagnostics.ProcessStartInfo
+    $gkPsi.FileName = $gkManage
+    $gkPsi.Arguments = "migrate --noinput"
+    $gkPsi.CreateNoWindow = $false
+    $gkPsi.UseShellExecute = $false
+    $gkPsi.WorkingDirectory = Split-Path $gkManage -Parent
+    foreach ($k in $gkEnv.Keys) { $gkPsi.EnvironmentVariables[$k] = $gkEnv[$k] }
+    $gkMigrate = [System.Diagnostics.Process]::Start($gkPsi)
+    $gkMigrate.WaitForExit(60000) | Out-Null
+
+    $gkPsi.Arguments = "createsuperuser --noinput"
+    $gkCreateSu = [System.Diagnostics.Process]::Start($gkPsi)
+    $gkCreateSu.WaitForExit(15000) | Out-Null   # falla en runs posteriores — es esperado
+
+    $gkServerPsi = New-Object System.Diagnostics.ProcessStartInfo
+    $gkServerPsi.FileName = $gatekeeper
+    $gkServerPsi.CreateNoWindow = $true
+    $gkServerPsi.UseShellExecute = $false
+    $gkServerPsi.WorkingDirectory = Split-Path $gatekeeper -Parent
+    foreach ($k in $gkEnv.Keys) { $gkServerPsi.EnvironmentVariables[$k] = $gkEnv[$k] }
+    [System.Diagnostics.Process]::Start($gkServerPsi) | Out-Null
+    Write-Host "  Iniciado (puerto $GK_PORT)" -ForegroundColor Green
 
     # ── FarmCalendar ──────────────────────────────────────────────────────────
     Write-Host "[2] FarmCalendar..." -ForegroundColor Yellow
@@ -104,6 +149,7 @@ if (-not $BackendOnly) {
     $calEnv["POSTGRES_PASSWORD"] = $PG_PASS
     $calEnv["APP_PORT"] = "8002"
     $calEnv["DJANGO_SECRET_KEY"] = "test-secret-key"
+    $calEnv["JWT_SIGNING_KEY"] = $JWT_SECRET
 
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $calendar
@@ -126,6 +172,7 @@ if (-not $BackendOnly) {
     $bkEnv["POSTGRES_DB"]       = $PG_DB
     $bkEnv["POSTGRES_USER"]     = $PG_USER
     $bkEnv["POSTGRES_PASSWORD"] = $PG_PASS
+    $bkEnv["FARMCALENDAR_JWT_SECRET"] = $JWT_SECRET
 }
 
 $psi2 = New-Object System.Diagnostics.ProcessStartInfo

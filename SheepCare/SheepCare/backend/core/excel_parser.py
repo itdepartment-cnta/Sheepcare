@@ -1,6 +1,6 @@
 """
 Excel/CSV Parser - Reads animal data files in wide format.
-Hoja "datos": Col A = ID_ANIMAL, Col B = ignorada, Col C+ = fechas con valores.
+Hoja "datos": Col A = ID_ANIMAL, Col B+ = fechas con valores.
 
 Supports both .xlsx (openpyxl) and .csv files.
 """
@@ -18,8 +18,7 @@ class ExcelParser:
 
     Expected format (wide):
         Col A: ID_ANIMAL (animal identifier)
-        Col B: (ignored - may contain non-relevant data)
-        Col C+: Date columns with resistance values
+        Col B+: Date columns with resistance values
     """
 
     @staticmethod
@@ -92,18 +91,18 @@ class ExcelParser:
             header
             and header[0]
             and str(header[0]).strip().upper()
-            in ("ID_ANIMAL", "ANIMAL", "ID", "ANIMAL ID")
+            in ("ID_ANIMAL", "ANIMAL", "ID", "ANIMAL ID", "IDENTIFICACION", "IDENTIFICACIÓN")
         ):
             rows = rows[1:]  # Skip header row
 
         if not rows:
             return []
 
-        # Detect date columns (column index 2 onwards, i.e., C onward)
-        # Try to parse column C+ headers as dates
+        # Detect date columns (column index 1 onwards, i.e., B onward)
+        # Try to parse column B+ headers as dates
         date_columns = []
         sample_row = rows[0]
-        for col_idx in range(2, len(sample_row)):  # Column C = index 2
+        for col_idx in range(1, len(sample_row)):  # Column B = index 1
             val = sample_row[col_idx]
             date_str = ExcelParser._try_parse_date(val)
             date_columns.append(date_str)
@@ -111,14 +110,14 @@ class ExcelParser:
         # If header row had dates, check next row too for validation
         if not any(date_columns):
             # Try looking for dates in row 0 (which wasn't a header)
-            for col_idx in range(2, len(header)):
+            for col_idx in range(1, len(header)):
                 val = header[col_idx]
                 date_str = ExcelParser._try_parse_date(val)
                 date_columns.append(date_str)
 
         if not any(date_columns):
             # Fallback: use column indices as-is (no date parsing)
-            for col_idx in range(2, len(sample_row)):
+            for col_idx in range(1, len(sample_row)):
                 date_columns.append(f"col_{col_idx}")
 
         # Parse each animal row
@@ -132,7 +131,7 @@ class ExcelParser:
                 continue
 
             readings = []
-            for col_idx, date_str in enumerate(date_columns, start=2):
+            for col_idx, date_str in enumerate(date_columns, start=1):
                 if col_idx >= len(row):
                     break
                 value = row[col_idx]
@@ -222,23 +221,24 @@ class ExcelParser:
         if (
             rows
             and rows[0]
-            and rows[0][0].strip().upper() in ("ID_ANIMAL", "ANIMAL", "ID", "ANIMAL ID")
+            and rows[0][0].strip().upper()
+            in ("ID_ANIMAL", "ANIMAL", "ID", "ANIMAL ID", "IDENTIFICACION", "IDENTIFICACIÓN")
         ):
             header_rows = 1
 
         # Parse date columns from header if available
         date_columns = []
-        if header_rows > 0 and len(rows[0]) > 2:
-            for col_idx in range(2, len(rows[0])):
+        if header_rows > 0 and len(rows[0]) > 1:
+            for col_idx in range(1, len(rows[0])):
                 val = rows[0][col_idx].strip()
                 parsed = ExcelParser._try_parse_date(val)
                 date_columns.append(parsed or val)
-        elif len(rows) > 1 and len(rows[1]) > 2:
+        elif len(rows) > 1 and len(rows[1]) > 1:
             # Use first data row's header positions
-            for col_idx in range(2, len(rows[1])):
+            for col_idx in range(1, len(rows[1])):
                 date_columns.append(f"date_{col_idx}")
         else:
-            for col_idx in range(2, len(rows[0])):
+            for col_idx in range(1, len(rows[0])):
                 date_columns.append(f"date_{col_idx}")
 
         # Parse data rows
@@ -252,7 +252,7 @@ class ExcelParser:
             animal_id = row[0].strip()
             readings = []
 
-            for col_idx, date_str in enumerate(date_columns, start=2):
+            for col_idx, date_str in enumerate(date_columns, start=1):
                 if col_idx >= len(row):
                     break
                 val_str = row[col_idx].strip()
@@ -301,7 +301,7 @@ class ExcelParser:
             return []
 
         dates = []
-        for col_idx in range(2, len(header_row)):
+        for col_idx in range(1, len(header_row)):
             val = header_row[col_idx]
             parsed = ExcelParser._try_parse_date(val)
             if parsed:

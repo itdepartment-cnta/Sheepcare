@@ -1,23 +1,102 @@
 import { useEffect, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
-import { farmsApi, resultsApi } from '../api';
-import type { Farm, DetectionResult } from '../api';
+import { farmsApi, resultsApi, milkQualityApi } from '../api';
+import type { Farm, DetectionResult, MilkQualityResult } from '../api';
+
+type Kind = 'celo' | 'milk_quality';
+
+interface UnifiedRow {
+    key: string;
+    kind: Kind;
+    animal_tag: string;
+    animal_name: string;
+    farm_name: string;
+    result: string;
+    confidence: number | null;
+    filename: string;
+    created_at: string;
+}
+
+const KIND_LABELS: Record<Kind, string> = {
+    celo: 'Celo',
+    milk_quality: 'Calidad de leche',
+};
+
+// El modelo de calidad de leche devuelve "Lower"/"Upper"; se muestran en
+// español sin tocar el valor real que guarda/filtra el backend.
+const MILK_QUALITY_LABELS: Record<string, string> = { Lower: 'Buena', Upper: 'Mala' };
+
+function displayResult(r: UnifiedRow): string {
+    return r.kind === 'milk_quality' ? (MILK_QUALITY_LABELS[r.result] ?? r.result) : r.result;
+}
+
+function toUnified(r: DetectionResult): UnifiedRow {
+    return {
+        key: `celo-${r.id}`,
+        kind: 'celo',
+        animal_tag: r.animal_tag,
+        animal_name: r.animal_name,
+        farm_name: r.farm_name,
+        result: r.result,
+        confidence: r.confidence,
+        filename: r.filename,
+        created_at: r.created_at,
+    };
+}
+
+function toUnifiedMilkQuality(r: MilkQualityResult): UnifiedRow {
+    return {
+        key: `milk-${r.id}`,
+        kind: 'milk_quality',
+        animal_tag: r.animal_tag,
+        animal_name: r.animal_name,
+        farm_name: r.farm_name,
+        result: r.result,
+        confidence: null,
+        filename: r.filename,
+        created_at: r.created_at,
+    };
+}
 
 export default function HistoryView() {
     const [farms, setFarms] = useState<Farm[]>([]);
-    const [results, setResults] = useState<DetectionResult[]>([]);
+    const [rows, setRows] = useState<UnifiedRow[]>([]);
     const [farmFilter, setFarmFilter] = useState<number | ''>('');
+    const [typeFilter, setTypeFilter] = useState<Kind | ''>('');
     const [resultFilter, setResultFilter] = useState('');
 
     const load = () => {
-        resultsApi.list({
-            farm_id: farmFilter || undefined,
-            result: resultFilter || undefined,
-        }).then(setResults);
+        const farmId = farmFilter || undefined;
+        Promise.all([
+            typeFilter === 'milk_quality'
+                ? Promise.resolve([])
+                : resultsApi.list({ farm_id: farmId, result: resultFilter || undefined }),
+            typeFilter === 'celo'
+                ? Promise.resolve([])
+                : milkQualityApi.results({ farm_id: farmId }),
+        ]).then(([celoResults, milkResults]) => {
+            const merged = [
+                ...celoResults.map(toUnified),
+                ...milkResults
+                    .filter(r => !resultFilter || r.result === resultFilter)
+                    .map(toUnifiedMilkQuality),
+            ];
+            merged.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+            setRows(merged);
+        });
     };
 
     useEffect(() => { farmsApi.list().then(setFarms); }, []);
-    useEffect(() => { load(); }, [farmFilter, resultFilter]);
+    useEffect(() => { load(); }, [farmFilter, typeFilter, resultFilter]);
+
+    const resultOptions = typeFilter === 'milk_quality'
+        ? [{ value: 'Lower', label: 'Buena' }, { value: 'Upper', label: 'Mala' }]
+        : typeFilter === 'celo'
+            ? [{ value: 'Celo', label: 'Celo' }, { value: 'No celo', label: 'No celo' }]
+            : [
+                { value: 'Celo', label: 'Celo' }, { value: 'No celo', label: 'No celo' },
+                { value: 'Lower', label: 'Buena' }, { value: 'Upper', label: 'Mala' },
+            ];
 
     return (
         <div>
@@ -45,18 +124,29 @@ export default function HistoryView() {
                 </select>
 
                 <select
+                    value={typeFilter}
+                    onChange={e => { setTypeFilter(e.target.value as Kind | ''); setResultFilter(''); }}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-acido"
+                >
+                    <option value="">Todos los Tipos</option>
+                    <option value="celo">Celo</option>
+                    <option value="milk_quality">Calidad de leche</option>
+                </select>
+
+                <select
                     value={resultFilter}
                     onChange={e => setResultFilter(e.target.value)}
                     className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-acido"
                 >
                     <option value="">Todos los Resultados</option>
-                    <option value="Celo">Celo</option>
-                    <option value="No celo">No celo</option>
+                    {resultOptions.map(o => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
                 </select>
             </div>
 
             {/* Table */}
-            {results.length === 0 ? (
+            {rows.length === 0 ? (
                 <div className="bg-white rounded-lg border border-gray-200 p-12 text-center shadow-sm">
                     <p className="text-gray-400">No se encontraron resultados de detección.</p>
                 </div>
@@ -67,6 +157,7 @@ export default function HistoryView() {
                             <tr>
                                 <th className="text-left px-4 py-3 text-sm font-semibold">Animal</th>
                                 <th className="text-left px-4 py-3 text-sm font-semibold">Granja</th>
+                                <th className="text-left px-4 py-3 text-sm font-semibold">Tipo</th>
                                 <th className="text-left px-4 py-3 text-sm font-semibold">Resultado</th>
                                 <th className="text-left px-4 py-3 text-sm font-semibold">Confianza</th>
                                 <th className="text-left px-4 py-3 text-sm font-semibold">Archivo</th>
@@ -74,20 +165,23 @@ export default function HistoryView() {
                             </tr>
                         </thead>
                         <tbody>
-                            {results.map(r => (
-                                <tr key={r.id} className="border-t border-gray-100 hover:bg-gray-50">
+                            {rows.map(r => (
+                                <tr key={r.key} className="border-t border-gray-100 hover:bg-gray-50">
                                     <td className="px-4 py-3">
                                         <span className="font-medium">{r.animal_tag}</span>
                                         {r.animal_name && <span className="text-gray-400 ml-1">({r.animal_name})</span>}
                                     </td>
                                     <td className="px-4 py-3 text-sm text-gray-500">{r.farm_name}</td>
+                                    <td className="px-4 py-3 text-sm text-gray-500">{KIND_LABELS[r.kind]}</td>
                                     <td className="px-4 py-3">
-                                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${r.result === 'Celo' ? 'bg-coral/10 text-coral' : 'bg-gray-100 text-gray-600'
+                                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${r.result === 'Celo' || r.result === 'Upper' ? 'bg-coral/10 text-coral' : 'bg-gray-100 text-gray-600'
                                             }`}>
-                                            {r.result}
+                                            {displayResult(r)}
                                         </span>
                                     </td>
-                                    <td className="px-4 py-3 text-sm text-gray-500">{(r.confidence * 100).toFixed(1)}%</td>
+                                    <td className="px-4 py-3 text-sm text-gray-500">
+                                        {r.confidence == null ? '—' : `${(r.confidence * 100).toFixed(1)}%`}
+                                    </td>
                                     <td className="px-4 py-3 text-sm text-gray-500">{r.filename}</td>
                                     <td className="px-4 py-3 text-sm text-gray-500">{r.created_at?.slice(0, 10)}</td>
                                 </tr>

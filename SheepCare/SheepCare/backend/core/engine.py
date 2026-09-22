@@ -98,8 +98,8 @@ class ProcessingEngine:
         Run the ML model to detect estrus.
 
         El modelo joblib (RandomForestClassifier) recibe directamente las
-        lecturas procesadas (columnas C+ del Excel, fila 2+), no las
-        features extraídas. Espera exactamente 5 lecturas por animal.
+        lecturas procesadas (columnas B+ del Excel, fila 2+), no las
+        features extraídas. Espera exactamente 2 lecturas por animal.
 
         Args:
             processed_data: Preprocessed signal array (readings values).

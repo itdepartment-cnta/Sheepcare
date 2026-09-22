@@ -17,6 +17,7 @@ param(
     [switch]$SkipFrontend,   # Saltar npm run build (si dist/ ya existe)
     [switch]$SkipBackend,    # Saltar PyInstaller del backend
     [switch]$SkipCalendar,   # Saltar PyInstaller del calendar
+    [switch]$SkipGatekeeper, # Saltar PyInstaller del gatekeeper
     [switch]$SkipLauncher,   # Saltar PyInstaller del launcher
     [switch]$SkipPgsql,      # Saltar descarga de PostgreSQL portable
     [switch]$SkipInno        # Saltar compilacion Inno Setup
@@ -88,6 +89,19 @@ if (-not $SkipCalendar) {
     Write-Host '  OK' -ForegroundColor Green
 } else {
     Write-Host "`n[3] Calendar: omitido (-SkipCalendar)" -ForegroundColor DarkGray
+}
+
+# ── 3.5 PyInstaller — GateKeeper ──────────────────────────────────────────────
+if (-not $SkipGatekeeper) {
+    Write-Host "`n[3.5] PyInstaller — GateKeeper (Django)..." -ForegroundColor Yellow
+    Push-Location $Root
+    try {
+        & $Pyinstaller sheepcare_gatekeeper.spec --distpath (Join-Path $InstallerDir 'dist') --workpath (Join-Path $InstallerDir 'build') --noconfirm
+        if ($LASTEXITCODE -ne 0) { Write-Error 'Fallo PyInstaller (gatekeeper)' }
+    } finally { Pop-Location }
+    Write-Host '  OK' -ForegroundColor Green
+} else {
+    Write-Host "`n[3.5] GateKeeper: omitido (-SkipGatekeeper)" -ForegroundColor DarkGray
 }
 
 # ── 4. PyInstaller — Launcher ─────────────────────────────────────────────────

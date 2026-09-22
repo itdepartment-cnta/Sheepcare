@@ -14,7 +14,7 @@ from ..data_access.db_manager import DatabaseManager
 from ..data_access.farmcalendar_client import FarmCalendarClient
 from ..core.excel_parser import ExcelParser
 from ..core.engine import ProcessingEngine
-from ..utils.helpers import get_data_dir
+from ..utils.helpers import get_data_dir, append_result_column
 
 router = APIRouter()
 db = DatabaseManager()
@@ -140,7 +140,7 @@ async def upload_file(
             os.remove(file_path)
         raise HTTPException(
             status_code=422,
-            detail="No valid animal data found in file. Check that column A has animal IDs and columns C+ have numeric values.",
+            detail="No valid animal data found in file. Check that column A has animal IDs and columns B+ have numeric values.",
         )
 
     # 5. Create upload record
@@ -183,8 +183,8 @@ async def upload_file(
         raw_array = np.array(values, dtype=np.float64)
         raw_array = raw_array[np.isfinite(raw_array)]
 
-        # El modelo espera exactamente 5 lecturas por animal
-        if len(raw_array) != 5:
+        # El modelo espera exactamente 2 lecturas por animal
+        if len(raw_array) != 2:
             continue
 
         try:
@@ -225,50 +225,17 @@ async def upload_file(
     result_file_name = ""
     if file.filename.lower().endswith((".xlsx", ".xls")):
         try:
-            import openpyxl
-            from openpyxl.styles import Font, PatternFill, Alignment
-
             result_filename = f"{uuid.uuid4().hex}_resultado_{file.filename}"
             result_path = os.path.join(uploads_dir, result_filename)
-
-            wb = openpyxl.load_workbook(file_path)
-            ws = wb.active if wb.active else wb[wb.sheetnames[0]]
-
-            # Find the last column with data
-            max_col = ws.max_column or 1
-            result_col = max_col + 1
-
-            # Add header "Resultado"
-            header_cell = ws.cell(row=1, column=result_col)
-            header_cell.value = "Resultado"
-            header_cell.font = Font(bold=True, color="FFFFFF")
-            header_cell.fill = PatternFill(
-                start_color="E28474", end_color="E28474", fill_type="solid"
+            append_result_column(
+                file_path,
+                result_path,
+                id_to_result={r.animal_id: r.result for r in results},
+                result_colors={
+                    "Celo": ("C0503A", "FDE8E8"),
+                    "No celo": ("6B7280", "F3F4F6"),
+                },
             )
-            header_cell.alignment = Alignment(horizontal="center")
-
-            # Build lookup: animal_id -> result
-            result_map = {r.animal_id: r.result for r in results}
-
-            # Fill results for each row
-            for row_idx in range(2, ws.max_row + 1):
-                animal_id = str(ws.cell(row=row_idx, column=1).value or "").strip()
-                result_val = result_map.get(animal_id, "")
-                cell = ws.cell(row=row_idx, column=result_col)
-                cell.value = result_val
-                cell.alignment = Alignment(horizontal="center")
-                if result_val == "Celo":
-                    cell.font = Font(color="C0503A", bold=True)
-                    cell.fill = PatternFill(
-                        start_color="FDE8E8", end_color="FDE8E8", fill_type="solid"
-                    )
-                elif result_val == "No celo":
-                    cell.font = Font(color="6B7280")
-                    cell.fill = PatternFill(
-                        start_color="F3F4F6", end_color="F3F4F6", fill_type="solid"
-                    )
-
-            wb.save(result_path)
             result_file_name = result_filename
         except Exception:
             pass  # Non-critical: continue even if Excel generation fails

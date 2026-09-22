@@ -44,6 +44,9 @@ Source: "dist\backend\*"; DestDir: "{app}\backend"; Flags: ignoreversion recurse
 ; FarmCalendar (carpeta con dependencias Python + Django)
 Source: "dist\calendar\*"; DestDir: "{app}\calendar"; Flags: ignoreversion recursesubdirs
 
+; GateKeeper (carpeta con dependencias Python + Django)
+Source: "dist\gatekeeper\*"; DestDir: "{app}\gatekeeper"; Flags: ignoreversion recursesubdirs
+
 ; PostgreSQL portable
 Source: "pgsql\*"; DestDir: "{app}\pgsql"; Flags: ignoreversion recursesubdirs
 
