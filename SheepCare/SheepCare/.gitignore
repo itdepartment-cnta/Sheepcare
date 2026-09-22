@@ -26,9 +26,10 @@ installer/images/
 installer/launcher.ps1
 installer/stop.ps1
 
-# Docs — keep only the end-user PDF guide
+# Docs — keep only the end-user PDF guides
 docs/*
 !docs/User guide.pdf
+!docs/Manual de usuario.pdf
 
 # OSS documentation drafts / templates (working copies, not for repo)
 Open_Source_Software_Documentation_template_with_Examples_ESTRUS_APP.docx

@@ -28,6 +28,14 @@ JWT_SECRET_FILE       = os.path.join(APPDATA, "jwt_secret.key")
 GK_DJANGO_SECRET_FILE = os.path.join(APPDATA, "gatekeeper_django_secret.key")
 GK_ADMIN_FILE         = os.path.join(APPDATA, "gatekeeper_admin.key")
 FC_DJANGO_SECRET_FILE = os.path.join(APPDATA, "farmcalendar_django_secret.key")
+FC_ADMIN_FILE         = os.path.join(APPDATA, "farmcalendar_admin.key")
+FC_GK_SERVICE_SECRET_FILE = os.path.join(APPDATA, "farmcalendar_gatekeeper_service.key")
+
+# Directorios de trabajo para los servidores Waitress (GateKeeper/FarmCalendar
+# escriben "logs/waitress.log" relativo a su cwd). No puede ser el directorio
+# de instalación: Program Files no es escribible por un usuario normal.
+GATEKEEPER_RUN_DIR = os.path.join(APPDATA, "gatekeeper_run")
+CALENDAR_RUN_DIR   = os.path.join(APPDATA, "calendar_run")
 
 PGSQL_BIN      = os.path.join(BASE_DIR, "pgsql", "bin")
 PG_CTL         = os.path.join(PGSQL_BIN, "pg_ctl.exe")
@@ -173,24 +181,105 @@ def get_or_create_secret(path: str, length: int = 48) -> str:
     return value
 
 
-def get_or_create_gatekeeper_admin() -> dict:
-    """Credenciales del superusuario Django de GateKeeper (panel /admin/),
-    generadas una sola vez — nunca hardcodeadas."""
-    if os.path.exists(GK_ADMIN_FILE):
+def prompt_admin_credentials(title: str, subtitle: str) -> dict:
+    """Formulario modal (hilo principal de Tkinter) para que el usuario
+    defina su propio usuario/contraseña de administrador. Bloquea el hilo
+    de arranque (que corre en background) hasta que se rellena y confirma."""
+    result: dict = {}
+    done = threading.Event()
+
+    def _show() -> None:
+        dialog = tk.Toplevel(root)
+        dialog.title(title)
+        dialog.resizable(False, False)
+        dialog.configure(bg="#1a1a2e")
+        dialog.geometry("380x300")
+        dialog.transient(root)
+        dialog.protocol("WM_DELETE_WINDOW", lambda: None)  # obligatorio rellenarlo
+
+        tk.Label(dialog, text=title, font=("Segoe UI", 11, "bold"),
+                 fg="#b5cc18", bg="#1a1a2e").place(x=20, y=16)
+        tk.Label(dialog, text=subtitle, font=("Segoe UI", 8), fg="#aaaaaa",
+                 bg="#1a1a2e", wraplength=340, justify="left").place(x=20, y=42)
+
+        tk.Label(dialog, text="Usuario", font=("Segoe UI", 9),
+                 fg="#dddddd", bg="#1a1a2e").place(x=20, y=94)
+        username_var = tk.StringVar(value="sheepcare-admin")
+        username_entry = tk.Entry(dialog, textvariable=username_var, font=("Segoe UI", 9), width=32)
+        username_entry.place(x=20, y=116)
+
+        tk.Label(dialog, text="Contraseña (mínimo 8 caracteres)", font=("Segoe UI", 9),
+                 fg="#dddddd", bg="#1a1a2e").place(x=20, y=146)
+        password_var = tk.StringVar()
+        password_entry = tk.Entry(dialog, textvariable=password_var, font=("Segoe UI", 9), width=32, show="•")
+        password_entry.place(x=20, y=168)
+
+        tk.Label(dialog, text="Confirmar contraseña", font=("Segoe UI", 9),
+                 fg="#dddddd", bg="#1a1a2e").place(x=20, y=198)
+        confirm_var = tk.StringVar()
+        confirm_entry = tk.Entry(dialog, textvariable=confirm_var, font=("Segoe UI", 9), width=32, show="•")
+        confirm_entry.place(x=20, y=220)
+
+        error_lbl = tk.Label(dialog, text="", font=("Segoe UI", 8), fg="#e07a5f",
+                              bg="#1a1a2e", wraplength=340, justify="left")
+        error_lbl.place(x=20, y=250)
+
+        def on_submit(_event=None) -> None:
+            username = username_var.get().strip()
+            password = password_var.get()
+            confirm = confirm_var.get()
+            if not username:
+                error_lbl.config(text="El usuario es obligatorio.")
+                return
+            if len(password) < 8:
+                error_lbl.config(text="La contraseña debe tener al menos 8 caracteres.")
+                return
+            if password != confirm:
+                error_lbl.config(text="Las contraseñas no coinciden.")
+                return
+            result["USERNAME"] = username
+            result["EMAIL"] = f"{username}@localhost"
+            result["PASSWORD"] = password
+            dialog.destroy()
+            done.set()
+
+        tk.Button(dialog, text="Crear acceso", command=on_submit, bg="#b5cc18",
+                  fg="#1a1a2e", font=("Segoe UI", 9, "bold"), relief="flat",
+                  padx=12, pady=4).place(x=20, y=272)
+        dialog.bind("<Return>", on_submit)
+        username_entry.focus_set()
+        dialog.grab_set()
+
+    root.after(0, _show)
+    done.wait()
+    return result
+
+
+def get_or_create_admin(
+    admin_file: str, interactive: bool = False, title: str = "", subtitle: str = ""
+) -> dict:
+    """Credenciales de un superusuario Django, persistidas fuera de {app}
+    para sobrevivir a reinstalaciones. Si `interactive` es True y no hay
+    credenciales guardadas, se le piden al usuario mediante un formulario en
+    vez de generarlas automáticamente."""
+    if os.path.exists(admin_file):
         creds = {}
-        with open(GK_ADMIN_FILE, "r", encoding="utf-8") as f:
+        with open(admin_file, "r", encoding="utf-8") as f:
             for line in f:
                 if "=" in line:
                     k, v = line.strip().split("=", 1)
                     creds[k] = v
         if {"USERNAME", "EMAIL", "PASSWORD"} <= creds.keys():
             return creds
-    creds = {
-        "USERNAME": "sheepcare-admin",
-        "EMAIL": "sheepcare-admin@localhost",
-        "PASSWORD": secrets.token_urlsafe(24),
-    }
-    with open(GK_ADMIN_FILE, "w", encoding="utf-8") as f:
+    if interactive:
+        creds = prompt_admin_credentials(title, subtitle)
+    else:
+        creds = {
+            "USERNAME": "sheepcare-admin",
+            "EMAIL": "sheepcare-admin@localhost",
+            "PASSWORD": secrets.token_urlsafe(24),
+        }
+    with open(admin_file, "w", encoding="utf-8") as f:
         for k, v in creds.items():
             f.write(f"{k}={v}\n")
     return creds
@@ -301,10 +390,22 @@ def launch():
     # dependencia dura: si falla, FarmCalendar y el backend deben seguir
     # funcionando exactamente igual que antes de esta integracion.
     ui_status("Iniciando servicio de autenticación...", "")
+    gatekeeper_ready = False
     try:
-        os.makedirs(os.path.join(GATEKEEPER_DIR, "logs"), exist_ok=True)
+        os.makedirs(os.path.join(GATEKEEPER_RUN_DIR, "logs"), exist_ok=True)
         gk_django_secret = get_or_create_secret(GK_DJANGO_SECRET_FILE)
-        gk_admin = get_or_create_gatekeeper_admin()
+        if not os.path.exists(GK_ADMIN_FILE):
+            ui_status("Esperando configuración de administrador...",
+                      "Rellena el formulario para continuar.")
+        gk_admin = get_or_create_admin(
+            GK_ADMIN_FILE,
+            interactive=True,
+            title="Crear acceso de GateKeeper",
+            subtitle="Es la primera vez que se arranca GateKeeper, el servicio de "
+                     "acceso de SheepCare. Define el usuario y la contraseña de "
+                     "administrador que usarás para iniciar sesión.",
+        )
+        ui_status("Iniciando servicio de autenticación...", "")
 
         gk_env = os.environ.copy()
         gk_env.update({
@@ -315,7 +416,16 @@ def launch():
             "DJANGO_DEBUG": "False",
             "APP_HOST": "127.0.0.1",
             "APP_PORT": str(GK_PORT),
+            # Llamada interna que el propio LoginView de GateKeeper hace a su
+            # API de login — el default es un hostname de Docker ('gatekeeper')
+            # que no resuelve en esta instalación sin Docker.
+            "INTERNAL_GK_URL": f"http://127.0.0.1:{GK_PORT}/",
             "FARM_CALENDAR_API": "http://127.0.0.1:8002/api/",
+            "FARM_CALENDAR_POST_AUTH": "http://127.0.0.1:8002/post_auth/",
+            # WhiteNoise sirve el CSS/JS desde aquí (CompressedManifestStaticFilesStorage
+            # necesita el manifest de "collectstatic"); el default cae dentro del
+            # directorio de instalación, no escribible por un usuario normal.
+            "DJANGO_STATIC_ROOT": os.path.join(GATEKEEPER_RUN_DIR, "assets"),
             "SUPERUSER_USERNAME": gk_admin["USERNAME"],
             "SUPERUSER_EMAIL": gk_admin["EMAIL"],
             "SUPERUSER_PASSWORD": gk_admin["PASSWORD"],
@@ -330,8 +440,11 @@ def launch():
         # existe) — no es un error real, solo se intenta una vez con éxito.
         run_cmd(GATEKEEPER_MANAGE_EXE, "createsuperuser", "--noinput",
                 env=gk_env, cwd=GATEKEEPER_DIR, timeout=30)
+        run_cmd(GATEKEEPER_MANAGE_EXE, "collectstatic", "--noinput",
+                env=gk_env, cwd=GATEKEEPER_DIR, timeout=60)
 
-        start_detached(GATEKEEPER_EXE, env=gk_env, cwd=GATEKEEPER_DIR)
+        start_detached(GATEKEEPER_EXE, env=gk_env, cwd=GATEKEEPER_RUN_DIR)
+        gatekeeper_ready = True
 
         # Healthcheck informativo (no bloqueante): el endpoint /healthz de
         # GateKeeper redirige con 301 antes de resolver la ruta (bug conocido
@@ -352,14 +465,49 @@ def launch():
 
     # 9. Arrancar FarmCalendar
     ui_status("Iniciando módulo de calendario...", "")
+    os.makedirs(os.path.join(CALENDAR_RUN_DIR, "logs"), exist_ok=True)
     fc_django_secret = get_or_create_secret(FC_DJANGO_SECRET_FILE)
     cal_env = base_env.copy()
     cal_env["APP_PORT"] = "8002"
     cal_env["JWT_SIGNING_KEY"] = jwt_secret
     cal_env["DJANGO_SECRET_KEY"] = fc_django_secret
+    cal_env["JWT_COOKIE_NAME"] = "OpenAgriAuth"
+
+    # SSO: delegar el login en GateKeeper en vez de usar cuentas locales de
+    # FarmCalendar. Solo se activa si GateKeeper arrancó bien — si no, cae al
+    # login local (superusuario creado más abajo) en vez de quedar roto.
+    if gatekeeper_ready:
+        fc_gk_password = get_or_create_secret(FC_GK_SERVICE_SECRET_FILE)
+        cal_env["GATEKEEPER_LOGIN_URL"] = f"http://127.0.0.1:{GK_PORT}/login/"
+        cal_env["GATEKEEPER_LOGOUT_API_URL"] = f"http://127.0.0.1:{GK_PORT}/api/logout/"
+        cal_env["GATEKEEPER_API_LOGIN_URL"] = f"http://127.0.0.1:{GK_PORT}/api/login/"
+        cal_env["GATEKEEPER_ENDPOINT_REG_URL"] = f"http://127.0.0.1:{GK_PORT}/api/register_service/"
+        # Cuenta de servicio para "manage.py service_registration" (registro
+        # de los endpoints de FarmCalendar en GateKeeper) — todavía no existe
+        # como usuario real en GateKeeper, pendiente de una próxima
+        # integración. Estas dos variables solo las exige el arranque de
+        # Django, no se usan salvo que se ejecute ese comando.
+        cal_env["FARMCALENDAR_GATEKEEPER_USER"] = "farmcalendar-service"
+        cal_env["FARMCALENDAR_GATEKEEPER_PASSWORD"] = fc_gk_password
+
     run_cmd(CALENDAR_MANAGE_EXE, "migrate", "--noinput",
             env=cal_env, cwd=CALENDAR_DIR, timeout=120)
-    start_detached(CALENDAR_EXE, env=cal_env)
+
+    # Superusuario local de FarmCalendar (solo se usa mientras GateKeeper no
+    # esté conectado como proveedor de login — ver GATEKEEPER_LOGIN_URL).
+    fc_admin = get_or_create_admin(FC_ADMIN_FILE)
+    fc_superuser_env = cal_env.copy()
+    fc_superuser_env.update({
+        "DJANGO_SUPERUSER_USERNAME": fc_admin["USERNAME"],
+        "DJANGO_SUPERUSER_EMAIL": fc_admin["EMAIL"],
+        "DJANGO_SUPERUSER_PASSWORD": fc_admin["PASSWORD"],
+    })
+    # Falla de forma idempotente en arranques posteriores (el usuario ya
+    # existe) — no es un error real, solo se intenta una vez con éxito.
+    run_cmd(CALENDAR_MANAGE_EXE, "createsuperuser", "--noinput",
+            env=fc_superuser_env, cwd=CALENDAR_DIR, timeout=30)
+
+    start_detached(CALENDAR_EXE, env=cal_env, cwd=CALENDAR_RUN_DIR)
 
     # 10. Arrancar Backend
     ui_status("Iniciando SheepCare...", "")

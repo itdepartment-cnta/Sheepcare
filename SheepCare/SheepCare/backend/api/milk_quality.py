@@ -5,11 +5,12 @@ Milk Quality API - Upload, parsing, and batch SCC (milk quality) prediction.
 import os
 import time
 import uuid
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Optional
 from ..data_access.db_manager import DatabaseManager
+from ..data_access.farmcalendar_client import FarmCalendarClient
 from ..core.spectral_parser import SpectralParser, ID_COLUMN
 from ..core.spectral_model import MilkQualityLoader
 from ..utils.helpers import get_data_dir, append_result_column
@@ -72,8 +73,24 @@ class MilkQualityResultResponse(BaseModel):
     farm_name: str
 
 
+def _sync_upload_to_calendar(farm_name: str, lower_count: int, upper_count: int,
+                              filename: str, sample_details: list) -> None:
+    try:
+        calendar_client = FarmCalendarClient()
+        calendar_client.post_milk_quality_detection(
+            farm_name=farm_name,
+            buena_count=lower_count,
+            mala_count=upper_count,
+            filename=filename,
+            sample_details=sample_details,
+        )
+    except Exception:
+        pass
+
+
 @router.post("/uploads/", response_model=MilkQualityUploadResponse, status_code=201)
 async def upload_file(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     farm_id: int = Form(...),
 ):
@@ -86,6 +103,12 @@ async def upload_file(
     farm = db.get_farm(farm_id)
     if not farm:
         raise HTTPException(status_code=404, detail="Farm not found")
+
+    # Ensure farm is synced to Farm Calendar (deferred — does not block upload)
+    if not db.get_fc_uuid("farm", farm_id):
+        from ..api.farms import _sync_farm_to_calendar
+        background_tasks.add_task(_sync_farm_to_calendar, farm_id,
+                                  farm["name"], farm.get("location", ""))
 
     if not file.filename or not file.filename.lower().endswith((".xlsx", ".xls")):
         raise HTTPException(
@@ -160,6 +183,18 @@ async def upload_file(
 
     if os.path.exists(file_path):
         os.remove(file_path)
+
+    # Post to Farm Calendar in background (non-blocking)
+    background_tasks.add_task(
+        _sync_upload_to_calendar,
+        farm_name=farm.get("name", f"Farm {farm_id}"),
+        lower_count=lower_count,
+        upper_count=upper_count,
+        filename=file.filename,
+        sample_details=[
+            {"animal_id": r.animal_id, "result": r.result} for r in results
+        ],
+    )
 
     return MilkQualityUploadResponse(
         upload_id=upload_id,

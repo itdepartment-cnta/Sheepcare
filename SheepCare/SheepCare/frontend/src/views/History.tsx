@@ -22,6 +22,14 @@ const KIND_LABELS: Record<Kind, string> = {
     milk_quality: 'Calidad de leche',
 };
 
+// El modelo de calidad de leche devuelve "Lower"/"Upper"; se muestran en
+// español sin tocar el valor real que guarda/filtra el backend.
+const MILK_QUALITY_LABELS: Record<string, string> = { Lower: 'Buena', Upper: 'Mala' };
+
+function displayResult(r: UnifiedRow): string {
+    return r.kind === 'milk_quality' ? (MILK_QUALITY_LABELS[r.result] ?? r.result) : r.result;
+}
+
 function toUnified(r: DetectionResult): UnifiedRow {
     return {
         key: `celo-${r.id}`,
@@ -82,12 +90,12 @@ export default function HistoryView() {
     useEffect(() => { load(); }, [farmFilter, typeFilter, resultFilter]);
 
     const resultOptions = typeFilter === 'milk_quality'
-        ? [{ value: 'Lower', label: 'Lower' }, { value: 'Upper', label: 'Upper' }]
+        ? [{ value: 'Lower', label: 'Buena' }, { value: 'Upper', label: 'Mala' }]
         : typeFilter === 'celo'
             ? [{ value: 'Celo', label: 'Celo' }, { value: 'No celo', label: 'No celo' }]
             : [
                 { value: 'Celo', label: 'Celo' }, { value: 'No celo', label: 'No celo' },
-                { value: 'Lower', label: 'Lower' }, { value: 'Upper', label: 'Upper' },
+                { value: 'Lower', label: 'Buena' }, { value: 'Upper', label: 'Mala' },
             ];
 
     return (
@@ -168,7 +176,7 @@ export default function HistoryView() {
                                     <td className="px-4 py-3">
                                         <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${r.result === 'Celo' || r.result === 'Upper' ? 'bg-coral/10 text-coral' : 'bg-gray-100 text-gray-600'
                                             }`}>
-                                            {r.result}
+                                            {displayResult(r)}
                                         </span>
                                     </td>
                                     <td className="px-4 py-3 text-sm text-gray-500">

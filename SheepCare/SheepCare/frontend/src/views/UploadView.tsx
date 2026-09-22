@@ -3,6 +3,10 @@ import { Upload, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
 import { farmsApi, uploadsApi, milkQualityApi } from '../api';
 import type { Farm, UploadResult, MilkQualityUploadResult } from '../api';
 
+// El modelo devuelve "Lower"/"Upper" (calidad de leche); se muestran en
+// español sin tocar el valor real que guarda el backend.
+const MILK_QUALITY_LABELS: Record<string, string> = { Lower: 'Buena', Upper: 'Mala' };
+
 function EstrusUploadCard({ farms }: { farms: Farm[] }) {
     const [selectedFarm, setSelectedFarm] = useState<number | ''>('');
     const [file, setFile] = useState<File | null>(null);
@@ -262,11 +266,11 @@ function MilkQualityUploadCard({ farms }: { farms: Farm[] }) {
                             <p className="text-xl font-bold">{result.total_samples}</p>
                         </div>
                         <div className="p-3 bg-gray-50 rounded-lg">
-                            <p className="text-gray-500">Lower</p>
+                            <p className="text-gray-500">Buena</p>
                             <p className="text-xl font-bold">{result.lower_count}</p>
                         </div>
                         <div className="p-3 bg-coral/5 rounded-lg">
-                            <p className="text-coral">Upper</p>
+                            <p className="text-coral">Mala</p>
                             <p className="text-xl font-bold text-coral">{result.upper_count}</p>
                         </div>
                     </div>
@@ -287,7 +291,7 @@ function MilkQualityUploadCard({ farms }: { farms: Farm[] }) {
                                         <td className="px-3 py-2">
                                             <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${r.result === 'Upper' ? 'bg-coral/10 text-coral' : 'bg-gray-100 text-gray-600'
                                                 }`}>
-                                                {r.result}
+                                                {MILK_QUALITY_LABELS[r.result] ?? r.result}
                                             </span>
                                         </td>
                                     </tr>

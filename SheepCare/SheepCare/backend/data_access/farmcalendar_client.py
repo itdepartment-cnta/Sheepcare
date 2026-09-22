@@ -86,9 +86,17 @@ class FarmCalendarClient:
         "text_color": "#FFFFFF",
     }
 
-    def get_or_create_activity_type(self) -> Optional[str]:
+    MILK_QUALITY_ACTIVITY_TYPE = {
+        "name": "Milk Quality",
+        "description": "Automated milk quality (SCC) classification from spectral readings",
+        "background_color": "#8ECAE6",
+        "border_color": "#2E7D9A",
+        "text_color": "#FFFFFF",
+    }
+
+    def _get_or_create_activity_type(self, activity_type_def: Dict[str, Any]) -> Optional[str]:
         """
-        Get or create the 'Estrus Detection' activity type.
+        Get or create an activity type by its 'name'.
         Returns the @id URN of the activity type, or None on failure.
         """
         self._ensure_auth()
@@ -103,13 +111,13 @@ class FarmCalendarClient:
                 data = resp.json()
                 activities = data.get("@graph", []) if "@graph" in data else data
                 for activity in activities:
-                    if activity.get("name") == "Estrus Detection":
+                    if activity.get("name") == activity_type_def["name"]:
                         return activity.get("@id")
 
             # Not found, create it
             create_resp = self._session.post(
                 f"{self.api_url}FarmCalendarActivityTypes/",
-                json=self.ESTRUS_ACTIVITY_TYPE,
+                json=activity_type_def,
                 params={"format": "json"},
                 timeout=10,
             )
@@ -119,6 +127,20 @@ class FarmCalendarClient:
         except requests.RequestException:
             pass
         return None
+
+    def get_or_create_activity_type(self) -> Optional[str]:
+        """
+        Get or create the 'Estrus Detection' activity type.
+        Returns the @id URN of the activity type, or None on failure.
+        """
+        return self._get_or_create_activity_type(self.ESTRUS_ACTIVITY_TYPE)
+
+    def get_or_create_milk_quality_activity_type(self) -> Optional[str]:
+        """
+        Get or create the 'Milk Quality' activity type.
+        Returns the @id URN of the activity type, or None on failure.
+        """
+        return self._get_or_create_activity_type(self.MILK_QUALITY_ACTIVITY_TYPE)
 
     # ------------------------------------------------------------------
     # Post Observation (Estrus Detection Event)
@@ -206,6 +228,99 @@ class FarmCalendarClient:
             "madeBySensor": {
                 "@type": "Sensor",
                 "name": "SHEEPCARE Detection Engine",
+            },
+        }
+        if activity_type_id:
+            payload["activityType"] = activity_type_id
+
+        try:
+            resp = self._session.post(
+                f"{self.api_url}Observations/",
+                json=payload,
+                params={"format": "json"},
+                timeout=15,
+            )
+            return resp.status_code in (200, 201)
+        except requests.RequestException:
+            return False
+
+    # ------------------------------------------------------------------
+    # Post Observation (Milk Quality Event)
+    # ------------------------------------------------------------------
+    def post_milk_quality_detection(
+        self,
+        farm_name: str,
+        buena_count: int,
+        mala_count: int,
+        filename: str,
+        upload_date: Optional[str] = None,
+        details_text: Optional[str] = None,
+        sample_details: Optional[List[Dict[str, Any]]] = None,
+    ) -> bool:
+        """
+        Post a milk quality (SCC) detection event as an Observation in the
+        Farm Calendar, mirroring post_estrus_detection().
+
+        Args:
+            farm_name: Name of the farm
+            buena_count: Number of samples classified as good quality (Lower)
+            mala_count: Number of samples classified as poor quality (Upper)
+            filename: Original uploaded file name
+            upload_date: ISO datetime string (defaults to now)
+            details_text: Optional detailed description
+            sample_details: Optional list of dicts with animal_id, result
+                (result is the raw "Lower"/"Upper" value stored in the DB)
+
+        Returns:
+            True if successfully posted
+        """
+        self._ensure_auth()
+        if not upload_date:
+            upload_date = datetime.now().isoformat()
+
+        if not details_text:
+            summary_parts = []
+            if buena_count > 0:
+                summary_parts.append(f"🟢 Buena: {buena_count}")
+            if mala_count > 0:
+                summary_parts.append(f"🔴 Mala: {mala_count}")
+
+            # Build per-sample list
+            if sample_details:
+                buena_samples = [s for s in sample_details if s.get("result") == "Lower"]
+                mala_samples = [s for s in sample_details if s.get("result") == "Upper"]
+                lines = [f"Archivo: {filename}"]
+                lines.extend(summary_parts)
+                lines.append("")
+                if buena_samples:
+                    lines.append("🟢 BUENA:")
+                    for s in buena_samples:
+                        lines.append(f"  {s['animal_id']}")
+                if mala_samples:
+                    lines.append("🔴 MALA:")
+                    for s in mala_samples:
+                        lines.append(f"  {s['animal_id']}")
+                details_text = "\n".join(lines)
+            else:
+                details_text = f"Archivo: {filename} | {' | '.join(summary_parts)}"
+
+        # Get or create the activity type
+        activity_type_id = self.get_or_create_milk_quality_activity_type()
+
+        payload: Dict[str, Any] = {
+            "@type": "Observation",
+            "title": f"Calidad de leche — {farm_name}",
+            "details": details_text,
+            "phenomenonTime": upload_date,
+            "observedProperty": "milk_quality_scc",
+            "hasResult": {
+                "@type": "QuantityValue",
+                "unit": "count",
+                "hasValue": f"Buena: {buena_count}, Mala: {mala_count}",
+            },
+            "madeBySensor": {
+                "@type": "Sensor",
+                "name": "SHEEPCARE Milk Quality Engine",
             },
         }
         if activity_type_id:

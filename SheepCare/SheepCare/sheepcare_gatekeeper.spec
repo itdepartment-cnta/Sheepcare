@@ -20,8 +20,12 @@ from PyInstaller.utils.hooks import collect_all
 crispy_datas, crispy_binaries, crispy_hiddenimports = collect_all('crispy_forms')
 crispy_b4_datas, crispy_b4_binaries, crispy_b4_hiddenimports = collect_all('crispy_bootstrap4')
 yasg_datas, yasg_binaries, yasg_hiddenimports = collect_all('drf_yasg')
+# rest_framework_simplejwt resuelve su TOKEN_BACKEND_CLASS con import_string
+# (carga dinamica por nombre, p.ej. rest_framework_simplejwt.state), que el
+# analisis estatico de PyInstaller no detecta solo con hiddenimports sueltos.
+simplejwt_datas, simplejwt_binaries, simplejwt_hiddenimports = collect_all('rest_framework_simplejwt')
 
-COMMON_BINARIES = crispy_binaries + crispy_b4_binaries + yasg_binaries
+COMMON_BINARIES = crispy_binaries + crispy_b4_binaries + yasg_binaries + simplejwt_binaries
 
 COMMON_DATAS = [
     # Toda la aplicacion Django (modelos, migraciones, templates propios...)
@@ -30,7 +34,7 @@ COMMON_DATAS = [
     (os.path.join(GK_DIR, 'templates'),  'templates'),
     (os.path.join(GK_DIR, 'static'),     'static'),
     (os.path.join(GK_DIR, '.env'),       '.'),
-] + crispy_datas + crispy_b4_datas + yasg_datas
+] + crispy_datas + crispy_b4_datas + yasg_datas + simplejwt_datas
 
 COMMON_HIDDENIMPORTS = [
     # Django core
@@ -47,11 +51,7 @@ COMMON_HIDDENIMPORTS = [
     'psycopg2', 'psycopg2._psycopg',
     'dj_database_url',
     'rest_framework', 'rest_framework.apps',
-    'rest_framework_simplejwt', 'rest_framework_simplejwt.apps',
-    'rest_framework_simplejwt.token_blacklist',
-    'rest_framework_simplejwt.token_blacklist.apps',
-    'rest_framework_simplejwt.views',
-] + yasg_hiddenimports + [
+] + simplejwt_hiddenimports + yasg_hiddenimports + [
     'corsheaders', 'corsheaders.middleware',
     'crispy_forms', 'crispy_bootstrap4',
 ] + crispy_hiddenimports + crispy_b4_hiddenimports + [
