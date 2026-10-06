@@ -1,36 +1,341 @@
 @import "tailwindcss";
 
+/* ==========================================================================
+   SISTEMA DE DISEÑO — SheepCare Cloud
+   --------------------------------------------------------------------------
+   Los tokens de este bloque son los de la «Guía de Diseño CNTA para
+   proveedores externos» (v1.0, 2026-05-22): colores, grises, semánticos,
+   radios, sombras y tipografías. No se cambian valores aquí: si hace falta
+   algo nuevo, se añade un token con nombre, no un hexadecimal suelto.
+
+   Lo que la guía no define y se añade para esta aplicación: los tokens de la
+   barra lateral (--side-*), el «bisel» de las tarjetas (--shell) y la curva de
+   movimiento (--ease-out).
+   ========================================================================== */
+:root {
+    /* Marca: el lima de la UI es #7FBB00, no el #93D600 del logotipo (satura
+       en superficies grandes). Texto sobre lima: siempre --brand-on. */
+    --brand-500: #7fbb00;
+    --brand-600: #6ba300;
+    --brand-700: #4f7400;
+    --brand-soft: #eaf5c8;
+    --brand-on: #1e1e1e;
+
+    /* Neutros. --ink-3 es el mínimo para texto secundario (4,62:1 sobre --bg):
+       el antiguo #8A8A8A falla WCAG AA y no se usa. */
+    --ink: #1e1e1e;
+    --ink-2: #4a4a4a;
+    --ink-3: #6e6e6e;
+    --ink-4: #c6c6c6;
+    --bg: #f8f8f7;
+    --bg-soft: #fafafa;
+    --panel: #ffffff;
+    --line: #ededed;
+    --line-soft: #f3f3f3;
+
+    /* Semánticos: solid (icono/borde), bg (fondo) y text (texto sobre el bg). */
+    --ok: #2a8a3a;     --ok-bg: #e9f6ec;     --ok-text: #14723a;
+    --warn: #c97000;   --warn-bg: #fef4e1;   --warn-text: #8a5a00;
+    --danger: #c64a3f; --danger-bg: #fbe9e6; --danger-text: #9b2e25;
+    --info: #00a499;   --info-bg: #e0f5f2;   --info-text: #005a52;
+
+    /* Secundarios, de uso muy limitado */
+    --accent-teal: #3cdbc0;
+    --accent-coral: #e28474;
+
+    --shadow-sm: 0 1px 2px rgba(30, 30, 30, .05);
+    --shadow-md: 0 6px 18px -8px rgba(30, 30, 30, .18), 0 2px 6px rgba(30, 30, 30, .04);
+    --shadow-lg: 0 24px 48px -24px rgba(30, 30, 30, .28), 0 4px 10px rgba(30, 30, 30, .06);
+
+    /* Añadidos de la aplicación */
+    --shell: color-mix(in srgb, var(--ink) 4%, transparent);
+    --highlight: rgba(255, 255, 255, .9);
+    --side: #1e1e1e;
+    --side-hover: rgba(255, 255, 255, .06);
+    --side-line: rgba(255, 255, 255, .1);
+    --side-ink: #f3f3f3;
+    --side-ink-2: #a8a8a8;
+    --ease-out: cubic-bezier(0.32, 0.72, 0, 1);
+
+    color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0e1311;
+    --bg-soft: #161c1a;
+    --panel: #1a2220;
+    --line: #2a322f;
+    --line-soft: #232a28;
+    --ink: #e8eae9;
+    --ink-2: #b9bebc;
+    --ink-3: #9aa5a1;
+    --ink-4: #4a534f;
+    --brand-500: #93d600;
+    --brand-600: #a8e825;
+    --brand-700: #c9eb6c;
+    --brand-soft: rgba(127, 187, 0, 0.14);
+
+    /* La guía no define los semánticos en oscuro: se tintan sobre el panel
+       oscuro conservando el par texto/fondo claro con contraste AA. */
+    --ok-bg: rgba(42, 138, 58, .16);     --ok-text: #7fd48b;
+    --warn-bg: rgba(201, 112, 0, .18);   --warn-text: #f0b45c;
+    --danger-bg: rgba(198, 74, 63, .18); --danger-text: #f19a90;
+    --info-bg: rgba(0, 164, 153, .16);   --info-text: #6fd8cf;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4);
+    --shadow-md: 0 6px 18px -8px rgba(0, 0, 0, .6), 0 2px 6px rgba(0, 0, 0, .3);
+    --shadow-lg: 0 24px 48px -24px rgba(0, 0, 0, .7), 0 4px 10px rgba(0, 0, 0, .35);
+
+    --shell: color-mix(in srgb, var(--ink) 6%, transparent);
+    --highlight: rgba(255, 255, 255, .05);
+    --side: #0a0e0d;
+    --side-hover: rgba(255, 255, 255, .05);
+}
+
+/* Utilidades de Tailwind a partir de los tokens. `inline` mantiene el
+   var(...) tal cual, de modo que el cambio de tema se aplique sin recompilar. */
+@theme inline {
+    --color-*: initial;
+    --color-white: #ffffff;
+    --color-black: #1e1e1e;
+    --color-brand-500: var(--brand-500);
+    --color-brand-600: var(--brand-600);
+    --color-brand-700: var(--brand-700);
+    --color-brand-soft: var(--brand-soft);
+    --color-brand-on: var(--brand-on);
+    --color-ink: var(--ink);
+    --color-ink-2: var(--ink-2);
+    --color-ink-3: var(--ink-3);
+    --color-ink-4: var(--ink-4);
+    --color-canvas: var(--bg);
+    --color-canvas-soft: var(--bg-soft);
+    --color-panel: var(--panel);
+    --color-line: var(--line);
+    --color-line-soft: var(--line-soft);
+    --color-ok: var(--ok);
+    --color-ok-bg: var(--ok-bg);
+    --color-ok-text: var(--ok-text);
+    --color-warn: var(--warn);
+    --color-warn-bg: var(--warn-bg);
+    --color-warn-text: var(--warn-text);
+    --color-danger: var(--danger);
+    --color-danger-bg: var(--danger-bg);
+    --color-danger-text: var(--danger-text);
+    --color-info: var(--info);
+    --color-info-bg: var(--info-bg);
+    --color-info-text: var(--info-text);
+    --color-teal: var(--accent-teal);
+    --color-coral: var(--accent-coral);
+    --color-shell: var(--shell);
+    --color-side: var(--side);
+    --color-side-hover: var(--side-hover);
+    --color-side-line: var(--side-line);
+    --color-side-ink: var(--side-ink);
+    --color-side-ink-2: var(--side-ink-2);
+}
+
 @theme {
-  --color-grafito: #1E1E1E;
-  --color-acido: #93D600;
-  --color-cian: #4CD0BF;
-  --color-coral: #E28474;
-  --color-verde-texto: #83BA00;
-  --color-lima: #B9F300;
-  --color-blanco: #FFFFFF;
+    --font-sans: 'Roboto', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --font-display: 'Montserrat', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+    /* Radios de la guía (6/10/14/18). El «bisel» usa 18 por fuera y 14 por
+       dentro con 4 px de marco, que es exactamente concéntrico. */
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --radius-xl: 18px;
+    /* Botones y campos: 8 px en la guía (.btn y .demo-field) */
+    --radius-control: 8px;
+
+    /* Curva de movimiento: arranque ágil y frenada larga. Sin linear ni
+       ease-in-out. */
+    --ease-snap: cubic-bezier(0.32, 0.72, 0, 1);
+
+    /* Escala tipográfica de la guía (tamaños permitidos: 11, 12, 13, 14, 16,
+       18, 20, 24, 26, 32). */
+    --text-micro: 11px;
+    --text-micro--line-height: 16px;
+    --text-small: 13px;
+    --text-small--line-height: 18px;
+    --text-body: 14px;
+    --text-body--line-height: 20px;
+    --text-h3: 16px;
+    --text-h3--line-height: 22px;
+    --text-h2: 20px;
+    --text-h2--line-height: 24px;
+    --text-h1: 26px;
+    --text-h1--line-height: 32px;
+    --text-display: 32px;
+    --text-display--line-height: 36px;
 }
 
-body {
-  margin: 0;
-  font-family: 'Inter', 'Geist Sans', sans-serif;
-  -webkit-font-smoothing: antialiased;
+/* ============== Base ============== */
+@layer base {
+    html {
+        scroll-behavior: smooth;
+    }
+
+    body {
+        margin: 0;
+        font-family: var(--font-sans);
+        font-size: 14px;
+        line-height: 1.45;
+        background: var(--bg);
+        color: var(--ink);
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+    }
+
+    h1, h2, h3, h4 {
+        font-family: var(--font-display);
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        color: var(--ink);
+        margin: 0;
+        text-wrap: balance;
+    }
+
+    p {
+        margin: 0;
+        text-wrap: pretty;
+    }
+
+    /* Foco visible global (WCAG 2.4.7): obligatorio en la guía. Nunca
+       `outline: none` sin una alternativa igual de visible. */
+    *:focus-visible {
+        outline: 2px solid var(--brand-600);
+        outline-offset: 2px;
+        border-radius: var(--radius-sm);
+    }
+
+    ::selection {
+        background: var(--brand-soft);
+        color: var(--ink);
+    }
+
+    /* Sin movimiento si el usuario lo pide (guía, §2) */
+    @media (prefers-reduced-motion: reduce) {
+        html {
+            scroll-behavior: auto;
+        }
+
+        *, *::before, *::after {
+            animation-duration: 0.001ms !important;
+            animation-delay: 0ms !important;
+            transition-duration: 0.001ms !important;
+        }
+    }
 }
 
-p {
-  margin: 0;
+/* ============== Componentes reutilizables ============== */
+@layer components {
+    /* Entrada escalonada: solo opacity y transform. El retraso sale de --i. */
+    .reveal {
+        animation: rise 640ms var(--ease-out) both;
+        animation-delay: calc(var(--i, 0) * 70ms);
+    }
+
+    @keyframes rise {
+        from {
+            opacity: 0;
+            transform: translateY(12px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    /* Esqueleto de carga: pulso de opacidad (no anima tamaño ni posición). */
+    .skeleton {
+        background: var(--line);
+        border-radius: var(--radius-md);
+        animation: pulse-soft 1.6s var(--ease-out) infinite;
+    }
+
+    @keyframes pulse-soft {
+        0%, 100% { opacity: 1; }
+        50% { opacity: .45; }
+    }
+
+    /* Cifras alineadas en columna */
+    .tabular {
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* «Doble bisel»: marco exterior con un núcleo interior, como una placa de
+       cristal en una bandeja. Radios concéntricos: 18 fuera, 14 dentro. */
+    .bezel {
+        background: var(--shell);
+        border-radius: var(--radius-xl);
+        padding: 4px;
+        box-shadow: 0 0 0 1px var(--line);
+    }
+
+    .bezel > .bezel-core {
+        background: var(--panel);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-sm), inset 0 1px 0 var(--highlight);
+        overflow: hidden;
+    }
+
+    /* Panel simple (la forma de la guía): para contenido secundario. */
+    .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-sm);
+    }
+
+    /* Diálogos modales: entran con el mismo movimiento que el resto y el fondo
+       se desenfoca (es una capa fija, no contenido que se desplaza). */
+    dialog[open] {
+        animation: rise 280ms var(--ease-out) both;
+    }
+
+    dialog::backdrop {
+        background: color-mix(in srgb, var(--ink) 45%, transparent);
+        backdrop-filter: blur(4px);
+        animation: fade 280ms var(--ease-out) both;
+    }
+
+    @keyframes fade {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+
+    /* Enlace «saltar al contenido» */
+    .skip-link {
+        position: absolute;
+        left: 16px;
+        top: -64px;
+        z-index: 60;
+        padding: 8px 16px;
+        border-radius: var(--radius-md);
+        background: var(--ink);
+        color: var(--bg);
+        font-weight: 500;
+        text-decoration: none;
+        transition: transform 200ms var(--ease-out);
+    }
+
+    .skip-link:focus {
+        transform: translateY(80px);
+    }
 }
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
-}
-
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+/* Texto fuera de pantalla, accesible para lectores */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
 }

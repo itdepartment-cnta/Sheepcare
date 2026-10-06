@@ -1,74 +1,91 @@
 import { useEffect, useState } from 'react';
-import { Calendar, CheckCircle, XCircle, ExternalLink } from 'lucide-react';
+import { ArrowSquareOut, ArrowsClockwise, CalendarBlank } from '@phosphor-icons/react';
 import { uploadsApi } from '../api';
 import type { UploadSummary } from '../api';
+import { fecha, numero } from '../lib/format';
+import { Button, Card, CardHeader, Chip, EmptyState, ErrorState, ExternalButton, PageHeader, LinkButton, Skeleton } from '../components/ui';
 
 const FARMCALENDAR_WEB_URL = 'http://localhost:8002/';
 
 export default function CalendarView() {
-    const [uploads, setUploads] = useState<UploadSummary[]>([]);
+    const [uploads, setUploads] = useState<UploadSummary[] | null>(null);
+    const [error, setError] = useState(false);
+    const [intento, setIntento] = useState(0);
 
     useEffect(() => {
-        uploadsApi.list().then(setUploads);
-    }, []);
+        let vigente = true;
+        uploadsApi.list()
+            .then(u => { if (vigente) setUploads(u); })
+            .catch(() => { if (vigente) setError(true); });
+        return () => { vigente = false; };
+    }, [intento]);
+
+    const recargar = () => {
+        setError(false);
+        setUploads(null);
+        setIntento(n => n + 1);
+    };
 
     return (
-        <div>
-            <div className="flex items-center justify-between mb-6">
-                <div>
-                    <h1 className="text-2xl font-bold text-grafito">📅 Detecciones Registradas</h1>
-                    <p className="text-gray-500 text-sm mt-1">
-                        Cada carga se registra como Observation en el Farm Calendar
-                    </p>
-                </div>
-                <a
-                    href={FARMCALENDAR_WEB_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 text-sm bg-cian text-white px-4 py-2 rounded-lg hover:bg-cian/90 transition-colors"
-                >
-                    <ExternalLink size={14} /> Abrir Farm Calendar
-                </a>
-            </div>
+        <>
+            <PageHeader
+                eyebrow="Seguimiento"
+                title="Detecciones registradas"
+                description="Cada carga se registra como Observation en el Farm Calendar."
+                actions={
+                    <>
+                        <Button icon={<ArrowsClockwise size={16} aria-hidden="true" />} onClick={recargar}>Actualizar</Button>
+                        <ExternalButton
+                            href={FARMCALENDAR_WEB_URL}
+                            variant="primary"
+                            icon={<ArrowSquareOut size={16} aria-hidden="true" />}
+                        >
+                            Abrir Farm Calendar
+                        </ExternalButton>
+                    </>
+                }
+            />
 
-            {/* Lista de detecciones */}
-            {uploads.length === 0 ? (
-                <div className="bg-white rounded-lg border border-gray-200 p-12 text-center shadow-sm">
-                    <Calendar size={48} className="mx-auto text-gray-300 mb-4" />
-                    <p className="text-gray-400">Aún no hay detecciones registradas.</p>
-                    <p className="text-gray-400 text-sm mt-1">Sube un archivo desde la sección Subir para crear la primera.</p>
-                </div>
-            ) : (
-                <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-                    <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-                        <h2 className="font-semibold text-grafito flex items-center gap-2">
-                            <Calendar size={16} /> Últimas detecciones
-                        </h2>
+            <Card padded={false} index={0}>
+                {error ? (
+                    <ErrorState action={<Button onClick={recargar}>Reintentar</Button>}>
+                        Revisa que el servicio local esté en marcha e inténtalo de nuevo.
+                    </ErrorState>
+                ) : uploads === null ? (
+                    <div className="space-y-3 p-5" role="status" aria-label="Cargando">
+                        {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
                     </div>
-                    <div className="divide-y divide-gray-100">
-                        {uploads.slice(0, 20).map(u => (
-                            <div key={u.id} className="px-4 py-3 flex items-center justify-between hover:bg-gray-50">
-                                <div className="flex items-center gap-3">
-                                    {u.celo_count > 0 ? (
-                                        <CheckCircle size={16} className="text-coral" />
-                                    ) : (
-                                        <XCircle size={16} className="text-gray-300" />
-                                    )}
-                                    <div>
-                                        <p className="text-sm font-medium text-grafito">{u.farm_name}</p>
-                                        <p className="text-xs text-gray-400">{u.filename} · {u.upload_date?.slice(0, 10)}</p>
+                ) : uploads.length === 0 ? (
+                    <EmptyState
+                        icon={<CalendarBlank aria-hidden="true" />}
+                        title="Aún no hay detecciones registradas"
+                        action={<LinkButton to="/upload" variant="primary">Subir datos</LinkButton>}
+                    >
+                        Sube un archivo desde «Subir datos» para crear la primera.
+                    </EmptyState>
+                ) : (
+                    <>
+                        <div className="px-5 pt-5">
+                            <CardHeader title="Últimas detecciones" icon={<CalendarBlank size={18} aria-hidden="true" />} />
+                        </div>
+                        <ul className="divide-y divide-line border-t border-line">
+                            {uploads.slice(0, 20).map(u => (
+                                <li key={u.id} className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-5 py-3 transition-colors duration-200 ease-snap hover:bg-canvas-soft">
+                                    <div className="min-w-0">
+                                        <p className="truncate text-body font-medium text-ink">{u.farm_name}</p>
+                                        <p className="truncate text-small text-ink-3">{u.filename} · {fecha(u.upload_date)}</p>
                                     </div>
-                                </div>
-                                <div className="flex gap-3 text-xs">
-                                    <span className="text-gray-500">{u.total_animals} animales</span>
-                                    {u.celo_count > 0 && <span className="text-coral font-medium">🟢 {u.celo_count} celo</span>}
-                                    <span className="text-gray-500">🔴 {u.no_celo_count} no celo</span>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
-        </div>
+                                    <div className="flex flex-wrap items-center gap-2 text-small text-ink-2">
+                                        <span className="tabular">{numero(u.total_animals)} animales</span>
+                                        {u.celo_count > 0 && <Chip tone="info">{numero(u.celo_count)} en celo</Chip>}
+                                        <Chip>{numero(u.no_celo_count)} no celo</Chip>
+                                    </div>
+                                </li>
+                            ))}
+                        </ul>
+                    </>
+                )}
+            </Card>
+        </>
     );
 }

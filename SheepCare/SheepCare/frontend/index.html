@@ -1,13 +1,30 @@
 <!doctype html>
-<html lang="en">
-  <head>
+<html lang="es">
+
+<head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/svg+xml" href="/sheepcare.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
-  </head>
-  <body>
+    <meta name="description" content="SheepCare: detección de celo y calidad de leche en ovino." />
+    <meta name="color-scheme" content="light dark" />
+    <title>SheepCare · Detección inteligente en ovino</title>
+    <!-- Tema antes del primer pintado, para que no parpadee. Las fuentes van
+         autoalojadas (se importan desde src/main.tsx): la guía de CNTA prohíbe
+         Google Fonts. -->
+    <script>
+        (function () {
+            try {
+                var t = localStorage.getItem('sheepcare-theme');
+                if (!t && window.matchMedia('(prefers-color-scheme: dark)').matches) t = 'dark';
+                if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+            } catch (e) { /* sin almacenamiento: tema claro */ }
+        })();
+    </script>
+</head>
+
+<body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-  </body>
+</body>
+
 </html>

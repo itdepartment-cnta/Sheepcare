@@ -1,28 +1,34 @@
+import { lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
-import Dashboard from './views/Dashboard';
-import FarmsView from './views/Farms';
-import UploadView from './views/UploadView';
-import HistoryView from './views/History';
-import AnimalsView from './views/Animals';
-import CalendarView from './views/Calendar';
-import SettingsView from './views/Settings';
+
+// Cada pantalla se carga cuando se visita (la guía de CNTA pide dividir por ruta
+// y no pasar de 200 KB de JS inicial).
+const Dashboard = lazy(() => import('./views/Dashboard'));
+const FarmsView = lazy(() => import('./views/Farms'));
+const UploadView = lazy(() => import('./views/UploadView'));
+const HistoryView = lazy(() => import('./views/History'));
+const AnimalsView = lazy(() => import('./views/Animals'));
+const CalendarView = lazy(() => import('./views/Calendar'));
+const SettingsView = lazy(() => import('./views/Settings'));
 
 function App() {
-  return (
-    <Layout>
-      <Routes>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/farms" element={<FarmsView />} />
-        <Route path="/upload" element={<UploadView />} />
-        <Route path="/history" element={<HistoryView />} />
-        <Route path="/animals" element={<AnimalsView />} />
-        <Route path="/calendar" element={<CalendarView />} />
-        <Route path="/settings" element={<SettingsView />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </Layout>
-  );
+    return (
+        <Routes>
+            {/* Pantallas con la barra lateral. El diseño se monta una sola vez. */}
+            <Route element={<Layout />}>
+                <Route index element={<Dashboard />} />
+                <Route path="farms" element={<FarmsView />} />
+                <Route path="upload" element={<UploadView />} />
+                <Route path="history" element={<HistoryView />} />
+                <Route path="animals" element={<AnimalsView />} />
+                <Route path="calendar" element={<CalendarView />} />
+                <Route path="settings" element={<SettingsView />} />
+            </Route>
+
+            <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+    );
 }
 
 export default App

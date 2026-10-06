@@ -1,134 +1,231 @@
 import { useEffect, useState } from 'react';
-import { Plus, Pencil, Trash2, RefreshCw } from 'lucide-react';
+import type { FormEvent } from 'react';
+import { ArrowsClockwise, Barn, PencilSimple, Plus, TrashSimple } from '@phosphor-icons/react';
 import { farmsApi } from '../api';
 import type { Farm } from '../api';
+import { mensajeDeError } from '../lib/errors';
+import { fecha, numero } from '../lib/format';
+import {
+    avisar, Button, Card, CardHeader, ConfirmDialog, EmptyState, ErrorState, IconButton, PageHeader,
+    Table, TableSkeleton, Td, TextField, Th, Tr,
+} from '../components/ui';
 
 export default function FarmsView() {
-    const [farms, setFarms] = useState<Farm[]>([]);
+    const [farms, setFarms] = useState<Farm[] | null>(null);
+    const [errorCarga, setErrorCarga] = useState(false);
+    const [intento, setIntento] = useState(0);
+
     const [showForm, setShowForm] = useState(false);
     const [editing, setEditing] = useState<Farm | null>(null);
     const [name, setName] = useState('');
     const [location, setLocation] = useState('');
+    const [errorNombre, setErrorNombre] = useState('');
+    const [errorServidor, setErrorServidor] = useState('');
+    const [guardando, setGuardando] = useState(false);
 
-    const load = () => farmsApi.list().then(setFarms);
+    const [aBorrar, setABorrar] = useState<Farm | null>(null);
+    const [borrando, setBorrando] = useState(false);
 
-    useEffect(() => { load(); }, []);
+    useEffect(() => {
+        let vigente = true;
+        farmsApi.list()
+            .then(f => { if (vigente) setFarms(f); })
+            .catch(() => { if (vigente) setErrorCarga(true); });
+        return () => { vigente = false; };
+    }, [intento]);
 
-    const handleSubmit = async () => {
-        if (!name.trim()) return;
-        if (editing) {
-            await farmsApi.update(editing.id, name, location);
-        } else {
-            await farmsApi.create(name, location);
-        }
-        setShowForm(false);
-        setEditing(null);
-        setName('');
-        setLocation('');
-        load();
+    const recargar = () => {
+        setErrorCarga(false);
+        setFarms(null);
+        setIntento(n => n + 1);
     };
 
-    const handleEdit = (f: Farm) => {
-        setEditing(f);
-        setName(f.name);
-        setLocation(f.location);
+    const limpiarFormulario = () => {
+        setName('');
+        setLocation('');
+        setErrorNombre('');
+        setErrorServidor('');
+    };
+
+    const cerrarFormulario = () => {
+        setShowForm(false);
+        setEditing(null);
+        limpiarFormulario();
+    };
+
+    const abrirNueva = () => {
+        setEditing(null);
+        limpiarFormulario();
         setShowForm(true);
     };
 
-    const handleDelete = async (id: number) => {
-        if (!confirm('¿Eliminar esta granja y todos sus datos?')) return;
-        await farmsApi.delete(id);
-        load();
+    const abrirEdicion = (f: Farm) => {
+        setEditing(f);
+        setName(f.name);
+        setLocation(f.location);
+        setErrorNombre('');
+        setErrorServidor('');
+        setShowForm(true);
+    };
+
+    const guardar = async (e: FormEvent) => {
+        e.preventDefault();
+        if (!name.trim()) {
+            setErrorNombre('Pon un nombre a la granja.');
+            return;
+        }
+        setErrorNombre('');
+        setErrorServidor('');
+        setGuardando(true);
+        try {
+            if (editing) {
+                await farmsApi.update(editing.id, name, location);
+            } else {
+                await farmsApi.create(name, location);
+            }
+            avisar.ok(editing ? 'Granja actualizada' : 'Granja creada', name.trim());
+            cerrarFormulario();
+            recargar();
+        } catch (err) {
+            setErrorServidor(mensajeDeError(err, 'No se pudo guardar la granja. Inténtalo de nuevo.'));
+        } finally {
+            setGuardando(false);
+        }
+    };
+
+    const confirmarBorrado = async () => {
+        if (!aBorrar) return;
+        setBorrando(true);
+        try {
+            await farmsApi.delete(aBorrar.id);
+            avisar.ok('Granja eliminada', aBorrar.name);
+            setABorrar(null);
+            recargar();
+        } catch (err) {
+            avisar.error('No se pudo eliminar la granja', mensajeDeError(err, 'Inténtalo de nuevo.'));
+        } finally {
+            setBorrando(false);
+        }
     };
 
     return (
-        <div>
-            <div className="flex items-center justify-between mb-6">
-                <div>
-                    <h1 className="text-2xl font-bold text-grafito">🏘️ Granjas</h1>
-                    <p className="text-gray-500 text-sm mt-1">Registra y gestiona tus granjas</p>
-                </div>
-                <div className="flex gap-2">
-                    {!showForm && (
-                        <button
-                            onClick={() => { setEditing(null); setName(''); setLocation(''); setShowForm(true); }}
-                            className="flex items-center gap-2 bg-acido text-white px-4 py-2 rounded-lg hover:bg-acido/90 transition-colors"
-                        >
-                            <Plus size={16} /> Añadir Granja
-                        </button>
-                    )}
-                    <button onClick={load} className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
-                        <RefreshCw size={16} className="text-gray-500" />
-                    </button>
-                </div>
-            </div>
+        <>
+            <PageHeader
+                eyebrow="Gestión"
+                title="Granjas"
+                description="Registra y gestiona tus granjas."
+                actions={
+                    <>
+                        <Button icon={<ArrowsClockwise size={16} aria-hidden="true" />} onClick={recargar}>
+                            Actualizar
+                        </Button>
+                        {!showForm && (
+                            <Button variant="primary" icon={<Plus size={16} aria-hidden="true" />} onClick={abrirNueva}>
+                                Añadir granja
+                            </Button>
+                        )}
+                    </>
+                }
+            />
 
             {showForm && (
-                <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6 shadow-sm">
-                    <h3 className="font-semibold text-grafito mb-4">{editing ? '✏️ Editar Granja' : '➕ Nueva Granja'}</h3>
-                    <div className="flex gap-4 mb-4">
-                        <input
-                            value={name}
-                            onChange={e => setName(e.target.value)}
-                            placeholder="Nombre de la granja *"
-                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-acido"
-                        />
-                        <input
-                            value={location}
-                            onChange={e => setLocation(e.target.value)}
-                            placeholder="Ubicación (opcional)"
-                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-acido"
-                        />
-                    </div>
-                    <div className="flex gap-2">
-                        <button onClick={handleSubmit} className="bg-acido text-white px-4 py-2 rounded-lg hover:bg-acido/90 transition-colors">
-                            {editing ? 'Actualizar' : 'Crear'}
-                        </button>
-                        <button onClick={() => { setShowForm(false); setEditing(null); }} className="px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                            Cancelar
-                        </button>
-                    </div>
-                </div>
+                <Card className="mb-4" index={0}>
+                    <CardHeader
+                        title={editing ? `Editar «${editing.name}»` : 'Nueva granja'}
+                        icon={editing ? <PencilSimple size={18} aria-hidden="true" /> : <Plus size={18} aria-hidden="true" />}
+                    />
+                    <form onSubmit={guardar} noValidate className="space-y-5">
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <TextField
+                                label="Nombre"
+                                required
+                                autoFocus
+                                value={name}
+                                error={errorNombre}
+                                onChange={e => { setName(e.target.value); setErrorNombre(''); }}
+                            />
+                            <TextField
+                                label="Ubicación"
+                                hint="Opcional. Municipio o zona."
+                                value={location}
+                                onChange={e => setLocation(e.target.value)}
+                            />
+                        </div>
+
+                        {errorServidor && (
+                            <p role="alert" className="rounded-md bg-danger-bg px-3 py-2.5 text-small text-danger-text">{errorServidor}</p>
+                        )}
+
+                        <div className="flex gap-2">
+                            <Button type="submit" variant="primary" loading={guardando}>
+                                {editing ? 'Guardar cambios' : 'Crear granja'}
+                            </Button>
+                            <Button onClick={cerrarFormulario} disabled={guardando}>Cancelar</Button>
+                        </div>
+                    </form>
+                </Card>
             )}
 
-            {farms.length === 0 ? (
-                <div className="bg-white rounded-lg border border-gray-200 p-12 text-center shadow-sm">
-                    <p className="text-gray-400 mb-2">No hay granjas registradas aún.</p>
-                    <p className="text-gray-400 text-sm">Crea tu primera granja para empezar a subir datos.</p>
-                </div>
-            ) : (
-                <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-                    <table className="w-full">
-                        <thead className="bg-grafito text-white">
+            <Card padded={false} index={1}>
+                {errorCarga ? (
+                    <ErrorState action={<Button onClick={recargar}>Reintentar</Button>}>
+                        Revisa que el servicio local esté en marcha e inténtalo de nuevo.
+                    </ErrorState>
+                ) : farms === null ? (
+                    <TableSkeleton rows={4} cols={5} />
+                ) : farms.length === 0 ? (
+                    <EmptyState
+                        icon={<Barn aria-hidden="true" />}
+                        title="Aún no hay granjas"
+                        action={!showForm && <Button variant="primary" onClick={abrirNueva}>Añadir tu primera granja</Button>}
+                    >
+                        Crea una granja para empezar a subir datos de celo y de calidad de leche.
+                    </EmptyState>
+                ) : (
+                    <Table caption="Granjas registradas" minWidth="40rem">
+                        <thead>
                             <tr>
-                                <th className="text-left px-4 py-3 text-sm font-semibold">ID</th>
-                                <th className="text-left px-4 py-3 text-sm font-semibold">Nombre</th>
-                                <th className="text-left px-4 py-3 text-sm font-semibold">Ubicación</th>
-                                <th className="text-left px-4 py-3 text-sm font-semibold">Creado</th>
-                                <th className="text-right px-4 py-3 text-sm font-semibold">Acciones</th>
+                                <Th align="right">N.º</Th>
+                                <Th>Granja</Th>
+                                <Th>Ubicación</Th>
+                                <Th>Alta</Th>
+                                <Th align="right"><span className="sr-only">Acciones</span></Th>
                             </tr>
                         </thead>
                         <tbody>
                             {farms.map(f => (
-                                <tr key={f.id} className="border-t border-gray-100 hover:bg-gray-50">
-                                    <td className="px-4 py-3 text-sm text-gray-500">{f.id}</td>
-                                    <td className="px-4 py-3 font-medium">{f.name}</td>
-                                    <td className="px-4 py-3 text-sm text-gray-500">{f.location || '—'}</td>
-                                    <td className="px-4 py-3 text-sm text-gray-500">{f.created_at?.slice(0, 10)}</td>
-                                    <td className="px-4 py-3 text-right">
-                                        <button onClick={() => handleEdit(f)} className="p-1.5 hover:bg-gray-100 rounded transition-colors">
-                                            <Pencil size={14} className="text-gray-400" />
-                                        </button>
-                                        <button onClick={() => handleDelete(f.id)} className="p-1.5 hover:bg-red-50 rounded transition-colors ml-1">
-                                            <Trash2 size={14} className="text-coral" />
-                                        </button>
-                                    </td>
-                                </tr>
+                                <Tr key={f.id}>
+                                    <Td numeric muted>{numero(f.id)}</Td>
+                                    <Td strong>{f.name}</Td>
+                                    <Td muted={!f.location}>{f.location || '—'}</Td>
+                                    <Td muted>{fecha(f.created_at)}</Td>
+                                    <Td>
+                                        <div className="flex justify-end gap-0.5">
+                                            <IconButton label={`Editar ${f.name}`} onClick={() => abrirEdicion(f)}>
+                                                <PencilSimple size={18} aria-hidden="true" />
+                                            </IconButton>
+                                            <IconButton label={`Eliminar ${f.name}`} tone="danger" onClick={() => setABorrar(f)}>
+                                                <TrashSimple size={18} aria-hidden="true" />
+                                            </IconButton>
+                                        </div>
+                                    </Td>
+                                </Tr>
                             ))}
                         </tbody>
-                    </table>
-                </div>
-            )}
-        </div>
+                    </Table>
+                )}
+            </Card>
+
+            <ConfirmDialog
+                open={aBorrar !== null}
+                title={aBorrar ? `¿Eliminar «${aBorrar.name}»?` : ''}
+                confirmLabel="Eliminar granja"
+                loading={borrando}
+                onConfirm={confirmarBorrado}
+                onCancel={() => { if (!borrando) setABorrar(null); }}
+            >
+                Se borrarán también sus animales, subidas y resultados. Esta acción no se puede deshacer.
+            </ConfirmDialog>
+        </>
     );
 }

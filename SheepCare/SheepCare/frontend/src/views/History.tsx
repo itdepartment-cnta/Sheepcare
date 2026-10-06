@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { ArrowsClockwise, ClockCounterClockwise } from '@phosphor-icons/react';
 import { farmsApi, resultsApi, milkQualityApi } from '../api';
 import type { Farm, DetectionResult, MilkQualityResult } from '../api';
+import { fecha, porcentaje } from '../lib/format';
+import {
+    Button, Card, Chip, EmptyState, ErrorState, PageHeader, SelectField, Table, TableSkeleton, Td, Th, Tr,
+} from '../components/ui';
 
 type Kind = 'celo' | 'milk_quality';
 
@@ -58,36 +62,52 @@ function toUnifiedMilkQuality(r: MilkQualityResult): UnifiedRow {
     };
 }
 
+const toneOf = (r: UnifiedRow) =>
+    r.result === 'Celo' ? 'info' : r.result === 'Upper' ? 'danger' : r.result === 'Lower' ? 'ok' : 'neutral';
+
 export default function HistoryView() {
     const [farms, setFarms] = useState<Farm[]>([]);
-    const [rows, setRows] = useState<UnifiedRow[]>([]);
+    const [rows, setRows] = useState<UnifiedRow[] | null>(null);
+    const [error, setError] = useState(false);
+    const [intento, setIntento] = useState(0);
     const [farmFilter, setFarmFilter] = useState<number | ''>('');
     const [typeFilter, setTypeFilter] = useState<Kind | ''>('');
     const [resultFilter, setResultFilter] = useState('');
 
-    const load = () => {
+    useEffect(() => { farmsApi.list().then(setFarms).catch(() => setFarms([])); }, []);
+
+    useEffect(() => {
+        let vigente = true;
         const farmId = farmFilter || undefined;
         Promise.all([
             typeFilter === 'milk_quality'
-                ? Promise.resolve([])
+                ? Promise.resolve([] as DetectionResult[])
                 : resultsApi.list({ farm_id: farmId, result: resultFilter || undefined }),
             typeFilter === 'celo'
-                ? Promise.resolve([])
+                ? Promise.resolve([] as MilkQualityResult[])
                 : milkQualityApi.results({ farm_id: farmId }),
-        ]).then(([celoResults, milkResults]) => {
-            const merged = [
-                ...celoResults.map(toUnified),
-                ...milkResults
-                    .filter(r => !resultFilter || r.result === resultFilter)
-                    .map(toUnifiedMilkQuality),
-            ];
-            merged.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
-            setRows(merged);
-        });
-    };
+        ])
+            .then(([celoResults, milkResults]) => {
+                if (!vigente) return;
+                const merged = [
+                    ...celoResults.map(toUnified),
+                    // El backend local no filtra la leche por resultado: se hace aquí.
+                    ...milkResults
+                        .filter(r => !resultFilter || r.result === resultFilter)
+                        .map(toUnifiedMilkQuality),
+                ];
+                merged.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+                setRows(merged);
+            })
+            .catch(() => { if (vigente) setError(true); });
+        return () => { vigente = false; };
+    }, [farmFilter, typeFilter, resultFilter, intento]);
 
-    useEffect(() => { farmsApi.list().then(setFarms); }, []);
-    useEffect(() => { load(); }, [farmFilter, typeFilter, resultFilter]);
+    const recargar = () => {
+        setError(false);
+        setRows(null);
+        setIntento(n => n + 1);
+    };
 
     const resultOptions = typeFilter === 'milk_quality'
         ? [{ value: 'Lower', label: 'Buena' }, { value: 'Upper', label: 'Mala' }]
@@ -98,98 +118,94 @@ export default function HistoryView() {
                 { value: 'Lower', label: 'Buena' }, { value: 'Upper', label: 'Mala' },
             ];
 
+    const hayFiltros = farmFilter !== '' || typeFilter !== '' || resultFilter !== '';
+    const limpiarFiltros = () => { setFarmFilter(''); setTypeFilter(''); setResultFilter(''); };
+
     return (
-        <div>
-            <div className="flex items-center justify-between mb-6">
-                <div>
-                    <h1 className="text-2xl font-bold text-grafito">📋 Historial de Detecciones</h1>
-                    <p className="text-gray-500 text-sm mt-1">Consulta todos los resultados de detección</p>
+        <>
+            <PageHeader
+                eyebrow="Resultados"
+                title="Historial"
+                description="Consulta los resultados de detección de celo y de calidad de leche."
+                actions={
+                    <Button icon={<ArrowsClockwise size={16} aria-hidden="true" />} onClick={recargar}>
+                        Actualizar
+                    </Button>
+                }
+            />
+
+            <Card padded={false} index={0}>
+                <div className="grid grid-cols-1 gap-4 border-b border-line p-4 sm:grid-cols-3 sm:p-5">
+                    <SelectField label="Granja" value={farmFilter} onChange={e => setFarmFilter(Number(e.target.value) || '')}>
+                        <option value="">Todas las granjas</option>
+                        {farms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                    </SelectField>
+                    <SelectField
+                        label="Tipo"
+                        value={typeFilter}
+                        onChange={e => { setTypeFilter(e.target.value as Kind | ''); setResultFilter(''); }}
+                    >
+                        <option value="">Todos los tipos</option>
+                        <option value="celo">Celo</option>
+                        <option value="milk_quality">Calidad de leche</option>
+                    </SelectField>
+                    <SelectField label="Resultado" value={resultFilter} onChange={e => setResultFilter(e.target.value)}>
+                        <option value="">Todos los resultados</option>
+                        {resultOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </SelectField>
                 </div>
-                <button onClick={load} className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
-                    <RefreshCw size={16} className="text-gray-500" />
-                </button>
-            </div>
 
-            {/* Filters */}
-            <div className="flex gap-4 mb-6">
-                <select
-                    value={farmFilter}
-                    onChange={e => setFarmFilter(Number(e.target.value) || '')}
-                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-acido"
-                >
-                    <option value="">Todas las Granjas</option>
-                    {farms.map(f => (
-                        <option key={f.id} value={f.id}>{f.name}</option>
-                    ))}
-                </select>
-
-                <select
-                    value={typeFilter}
-                    onChange={e => { setTypeFilter(e.target.value as Kind | ''); setResultFilter(''); }}
-                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-acido"
-                >
-                    <option value="">Todos los Tipos</option>
-                    <option value="celo">Celo</option>
-                    <option value="milk_quality">Calidad de leche</option>
-                </select>
-
-                <select
-                    value={resultFilter}
-                    onChange={e => setResultFilter(e.target.value)}
-                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-acido"
-                >
-                    <option value="">Todos los Resultados</option>
-                    {resultOptions.map(o => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                </select>
-            </div>
-
-            {/* Table */}
-            {rows.length === 0 ? (
-                <div className="bg-white rounded-lg border border-gray-200 p-12 text-center shadow-sm">
-                    <p className="text-gray-400">No se encontraron resultados de detección.</p>
-                </div>
-            ) : (
-                <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-                    <table className="w-full">
-                        <thead className="bg-grafito text-white">
+                {error ? (
+                    <ErrorState action={<Button onClick={recargar}>Reintentar</Button>}>
+                        Revisa que el servicio local esté en marcha e inténtalo de nuevo.
+                    </ErrorState>
+                ) : rows === null ? (
+                    <TableSkeleton rows={6} cols={7} />
+                ) : rows.length === 0 ? (
+                    <EmptyState
+                        icon={<ClockCounterClockwise aria-hidden="true" />}
+                        title={hayFiltros ? 'Ningún resultado con estos filtros' : 'Aún no hay resultados'}
+                        action={hayFiltros ? <Button onClick={limpiarFiltros}>Quitar filtros</Button> : undefined}
+                    >
+                        {hayFiltros
+                            ? 'Prueba con otra granja, tipo o resultado.'
+                            : 'Sube un archivo desde «Subir datos» y sus resultados aparecerán aquí.'}
+                    </EmptyState>
+                ) : (
+                    <Table caption="Historial de resultados" minWidth="52rem" maxHeight="36rem">
+                        <thead>
                             <tr>
-                                <th className="text-left px-4 py-3 text-sm font-semibold">Animal</th>
-                                <th className="text-left px-4 py-3 text-sm font-semibold">Granja</th>
-                                <th className="text-left px-4 py-3 text-sm font-semibold">Tipo</th>
-                                <th className="text-left px-4 py-3 text-sm font-semibold">Resultado</th>
-                                <th className="text-left px-4 py-3 text-sm font-semibold">Confianza</th>
-                                <th className="text-left px-4 py-3 text-sm font-semibold">Archivo</th>
-                                <th className="text-left px-4 py-3 text-sm font-semibold">Fecha</th>
+                                <Th>Animal</Th>
+                                <Th>Granja</Th>
+                                <Th>Tipo</Th>
+                                <Th>Resultado</Th>
+                                <Th align="right">Confianza</Th>
+                                <Th>Archivo</Th>
+                                <Th>Fecha</Th>
                             </tr>
                         </thead>
                         <tbody>
                             {rows.map(r => (
-                                <tr key={r.key} className="border-t border-gray-100 hover:bg-gray-50">
-                                    <td className="px-4 py-3">
-                                        <span className="font-medium">{r.animal_tag}</span>
-                                        {r.animal_name && <span className="text-gray-400 ml-1">({r.animal_name})</span>}
-                                    </td>
-                                    <td className="px-4 py-3 text-sm text-gray-500">{r.farm_name}</td>
-                                    <td className="px-4 py-3 text-sm text-gray-500">{KIND_LABELS[r.kind]}</td>
-                                    <td className="px-4 py-3">
-                                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${r.result === 'Celo' || r.result === 'Upper' ? 'bg-coral/10 text-coral' : 'bg-gray-100 text-gray-600'
-                                            }`}>
-                                            {displayResult(r)}
-                                        </span>
-                                    </td>
-                                    <td className="px-4 py-3 text-sm text-gray-500">
-                                        {r.confidence == null ? '—' : `${(r.confidence * 100).toFixed(1)}%`}
-                                    </td>
-                                    <td className="px-4 py-3 text-sm text-gray-500">{r.filename}</td>
-                                    <td className="px-4 py-3 text-sm text-gray-500">{r.created_at?.slice(0, 10)}</td>
-                                </tr>
+                                <Tr key={r.key}>
+                                    <Td>
+                                        <span className="font-mono font-medium text-ink">{r.animal_tag}</span>
+                                        {r.animal_name && <span className="text-ink-3"> ({r.animal_name})</span>}
+                                    </Td>
+                                    <Td muted>{r.farm_name || '—'}</Td>
+                                    <Td muted>{KIND_LABELS[r.kind]}</Td>
+                                    <Td>
+                                        {/* El resaltado mira el valor CRUDO, no el traducido */}
+                                        <Chip tone={toneOf(r)}>{displayResult(r)}</Chip>
+                                    </Td>
+                                    <Td numeric muted>{r.confidence == null ? '—' : porcentaje(r.confidence, 1)}</Td>
+                                    <Td muted>{r.filename || '—'}</Td>
+                                    <Td muted>{fecha(r.created_at)}</Td>
+                                </Tr>
                             ))}
                         </tbody>
-                    </table>
-                </div>
-            )}
-        </div>
+                    </Table>
+                )}
+            </Card>
+        </>
     );
 }
