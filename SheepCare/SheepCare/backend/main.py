@@ -11,7 +11,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from .api import farms, uploads, results, animals, settings, milk_quality
+from .api import farms, uploads, results, animals, settings, milk_quality, weather, reporting
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +81,8 @@ app.include_router(results.router, prefix="/api/results", tags=["Results"])
 app.include_router(animals.router, prefix="/api/animals", tags=["Animals"])
 app.include_router(settings.router, prefix="/api/settings", tags=["Settings"])
 app.include_router(milk_quality.router, prefix="/api/milk-quality", tags=["Milk Quality"])
+app.include_router(weather.router, prefix="/api/weather", tags=["Weather"])
+app.include_router(reporting.router, prefix="/api/reporting", tags=["Reporting"])
 
 
 @app.get("/api/health")

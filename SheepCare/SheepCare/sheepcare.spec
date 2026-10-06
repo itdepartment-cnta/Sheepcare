@@ -45,7 +45,8 @@ a = Analysis(
         # backend
         'backend', 'backend.main', 'backend.api', 'backend.api.farms',
         'backend.api.uploads', 'backend.api.results', 'backend.api.animals',
-        'backend.api.settings', 'backend.api.milk_quality', 'backend.core',
+        'backend.api.settings', 'backend.api.milk_quality', 'backend.api.weather',
+        'backend.api.reporting', 'backend.core',
         'backend.core.models_loader', 'backend.core.spectral_model',
         'backend.core.spectral_parser',
         'backend.data_access', 'backend.data_access.db_manager',
