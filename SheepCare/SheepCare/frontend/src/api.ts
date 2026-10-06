@@ -10,15 +10,25 @@ export interface Farm {
     name: string;
     location: string;
     created_at: string;
+    // Posición real de la granja (para el servicio meteorológico).
+    latitude?: number | null;
+    longitude?: number | null;
+}
+
+export interface FarmCoordinates {
+    latitude: number | null;
+    longitude: number | null;
 }
 
 export const farmsApi = {
     list: () => api.get<Farm[]>('/farms/').then(r => r.data),
     get: (id: number) => api.get<Farm>(`/farms/${id}`).then(r => r.data),
-    create: (name: string, location: string) =>
-        api.post<Farm>('/farms/', { name, location }).then(r => r.data),
-    update: (id: number, name: string, location: string) =>
-        api.put<Farm>(`/farms/${id}`, { name, location }).then(r => r.data),
+    create: (name: string, location: string, coords?: FarmCoordinates) =>
+        api.post<Farm>('/farms/', { name, location, ...coords }).then(r => r.data),
+    // Con `coords` omitido el backend no toca las coordenadas; con
+    // {latitude: null, longitude: null} las borra.
+    update: (id: number, name: string, location: string, coords?: FarmCoordinates) =>
+        api.put<Farm>(`/farms/${id}`, { name, location, ...coords }).then(r => r.data),
     delete: (id: number) => api.delete(`/farms/${id}`),
 };
 
@@ -191,6 +201,11 @@ export interface ConnectivityStatus {
     checked_at: string;
 }
 
+export interface WeatherConfig {
+    configured: boolean;
+    key_hint: string;
+}
+
 export const settingsApi = {
     system: () => api.get<SystemInfo>('/settings/system').then(r => r.data),
     syncStatus: () => api.get<SyncStatus>('/settings/sync/status').then(r => r.data),
@@ -200,6 +215,10 @@ export const settingsApi = {
     saveCloudConfig: (cloud_url: string, email: string, password: string) =>
         api.post<CloudConfig>('/settings/cloud/config', { cloud_url, email, password }).then(r => r.data),
     clearCloudConfig: () => api.delete('/settings/cloud/config').then(r => r.data),
+    weatherConfig: () => api.get<WeatherConfig>('/settings/weather').then(r => r.data),
+    saveWeatherKey: (api_key: string) =>
+        api.put<WeatherConfig>('/settings/weather', { api_key }).then(r => r.data),
+    clearWeatherKey: () => api.delete<WeatherConfig>('/settings/weather').then(r => r.data),
 };
 
 export default api;

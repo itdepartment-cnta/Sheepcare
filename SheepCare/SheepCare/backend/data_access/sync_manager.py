@@ -322,6 +322,8 @@ class SyncService:
                     farm["name"],
                     farm.get("location", ""),
                     farm["created_at"],
+                    farm.get("latitude"),
+                    farm.get("longitude"),
                 )
                 if new_id:
                     confirmed_ids.append(("farms", farm["id"]))

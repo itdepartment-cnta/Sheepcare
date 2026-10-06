@@ -5,7 +5,7 @@ Settings API - System configuration, sync control, and cloud credentials.
 import os
 from datetime import datetime, timezone
 from fastapi import APIRouter, BackgroundTasks
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional
 from ..data_access.db_manager import DatabaseManager
 from ..data_access.sync_manager import SyncService
@@ -45,6 +45,29 @@ class CloudConfigRequest(BaseModel):
     cloud_url: str
     email: str
     password: str
+
+
+WEATHER_API_KEY_SETTING = "weather_openweathermap_api_key"
+
+
+class WeatherConfigResponse(BaseModel):
+    configured: bool
+    # Last four characters only, so the user can recognise which key is saved.
+    key_hint: str = ""
+
+
+class WeatherConfigRequest(BaseModel):
+    api_key: str
+
+    @field_validator("api_key")
+    @classmethod
+    def _clean(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("api_key must not be empty")
+        if any(c.isspace() for c in v):
+            raise ValueError("api_key must not contain spaces")
+        return v
 
 
 class ConnectivityResponse(BaseModel):
@@ -163,3 +186,30 @@ async def clear_cloud_config():
     sync_service = SyncService(db)
     sync_service.clear_config()
     return {"success": True, "message": "Cloud configuration removed"}
+
+
+def _weather_config() -> WeatherConfigResponse:
+    key = db.get_setting(WEATHER_API_KEY_SETTING)
+    if not key:
+        return WeatherConfigResponse(configured=False)
+    return WeatherConfigResponse(configured=True, key_hint=key[-4:])
+
+
+@router.get("/weather", response_model=WeatherConfigResponse)
+async def get_weather_config():
+    """Whether the user has saved an OpenWeatherMap API key (never returns it)."""
+    return _weather_config()
+
+
+@router.put("/weather", response_model=WeatherConfigResponse)
+async def save_weather_config(req: WeatherConfigRequest):
+    """Save the user's OpenWeatherMap API key."""
+    db.set_setting(WEATHER_API_KEY_SETTING, req.api_key)
+    return _weather_config()
+
+
+@router.delete("/weather", response_model=WeatherConfigResponse)
+async def clear_weather_config():
+    """Remove the saved OpenWeatherMap API key."""
+    db.delete_setting(WEATHER_API_KEY_SETTING)
+    return _weather_config()

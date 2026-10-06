@@ -3,7 +3,7 @@ Farms API - CRUD operations for farms.
 """
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 from typing import List, Optional
 from ..data_access.db_manager import DatabaseManager
 from ..data_access.farmcalendar_client import FarmCalendarClient
@@ -12,12 +12,24 @@ router = APIRouter()
 db = DatabaseManager()
 
 
-class FarmCreate(BaseModel):
+class _Coordinates(BaseModel):
+    # Real position of the farm (used by the weather service). Both or none.
+    latitude: Optional[float] = Field(default=None, ge=-90, le=90)
+    longitude: Optional[float] = Field(default=None, ge=-180, le=180)
+
+    @model_validator(mode="after")
+    def _both_or_none(self):
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValueError("latitude and longitude must be provided together")
+        return self
+
+
+class FarmCreate(_Coordinates):
     name: str
     location: str = ""
 
 
-class FarmUpdate(BaseModel):
+class FarmUpdate(_Coordinates):
     name: str
     location: str = ""
 
@@ -27,6 +39,8 @@ class FarmResponse(BaseModel):
     name: str
     location: str
     created_at: str
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
 
 def _sync_farm_to_calendar(farm_id: int, name: str, location: str) -> None:
@@ -45,7 +59,7 @@ def _sync_farm_to_calendar(farm_id: int, name: str, location: str) -> None:
 @router.post("/", response_model=FarmResponse, status_code=201)
 async def create_farm(farm: FarmCreate, background_tasks: BackgroundTasks):
     """Register a new farm."""
-    farm_id = db.add_farm(farm.name, farm.location)
+    farm_id = db.add_farm(farm.name, farm.location, farm.latitude, farm.longitude)
     result = db.get_farm(farm_id)
     background_tasks.add_task(_sync_farm_to_calendar, farm_id, farm.name, farm.location)
     return FarmResponse(**result)
@@ -70,7 +84,11 @@ async def get_farm(farm_id: int):
 @router.put("/{farm_id}", response_model=FarmResponse)
 async def update_farm(farm_id: int, farm: FarmUpdate):
     """Update farm details."""
-    success = db.update_farm(farm_id, farm.name, farm.location)
+    # Coordinates omitted -> untouched; sent (even as null) -> replaced.
+    coords = None
+    if {"latitude", "longitude"} & farm.model_fields_set:
+        coords = (farm.latitude, farm.longitude)
+    success = db.update_farm(farm_id, farm.name, farm.location, coords)
     if not success:
         raise HTTPException(status_code=404, detail="Farm not found")
     result = db.get_farm(farm_id)

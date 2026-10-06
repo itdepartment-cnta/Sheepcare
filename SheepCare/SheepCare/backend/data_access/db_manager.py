@@ -6,7 +6,7 @@ Extended schema for SHEEPCARE v2: farms, uploads, animal_readings, detection_res
 import sqlite3
 import os
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 
 
 class DatabaseManager:
@@ -151,6 +151,13 @@ class DatabaseManager:
                 client_id     INTEGER DEFAULT 0
             );
 
+            -- Generic key/value settings (e.g. the user's OpenWeatherMap API key)
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key         TEXT PRIMARY KEY,
+                value       TEXT NOT NULL DEFAULT '',
+                updated_at  DATETIME NOT NULL DEFAULT (datetime('now'))
+            );
+
             -- Farm Calendar sync tracking (maps local IDs to FC UUIDs)
             CREATE TABLE IF NOT EXISTS farmcalendar_sync (
                 id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -167,6 +174,8 @@ class DatabaseManager:
             ("farms", "origin", "TEXT", "'edge'"),
             ("farms", "cloud_id", "INTEGER", "NULL"),
             ("farms", "synced_at", "DATETIME", "NULL"),
+            ("farms", "latitude", "REAL", "NULL"),
+            ("farms", "longitude", "REAL", "NULL"),
             ("animals", "origin", "TEXT", "'edge'"),
             ("animals", "cloud_id", "INTEGER", "NULL"),
             ("animals", "synced_at", "DATETIME", "NULL"),
@@ -193,11 +202,17 @@ class DatabaseManager:
     # ------------------------------------------------------------------
     # Farms CRUD
     # ------------------------------------------------------------------
-    def add_farm(self, name: str, location: str = "") -> int:
+    def add_farm(
+        self,
+        name: str,
+        location: str = "",
+        latitude: Optional[float] = None,
+        longitude: Optional[float] = None,
+    ) -> int:
         cursor = self.connection.cursor()
         cursor.execute(
-            "INSERT INTO farms (name, location) VALUES (?, ?)",
-            (name, location),
+            "INSERT INTO farms (name, location, latitude, longitude) VALUES (?, ?, ?, ?)",
+            (name, location, latitude, longitude),
         )
         self.connection.commit()
         return cursor.lastrowid
@@ -213,12 +228,26 @@ class DatabaseManager:
         cursor.execute("SELECT * FROM farms ORDER BY name")
         return [dict(row) for row in cursor.fetchall()]
 
-    def update_farm(self, farm_id: int, name: str, location: str) -> bool:
+    def update_farm(
+        self,
+        farm_id: int,
+        name: str,
+        location: str,
+        coords: Optional[Tuple[Optional[float], Optional[float]]] = None,
+    ) -> bool:
+        """Update a farm. `coords` None leaves the coordinates untouched;
+        (None, None) clears them."""
         cursor = self.connection.cursor()
-        cursor.execute(
-            "UPDATE farms SET name = ?, location = ? WHERE id = ?",
-            (name, location, farm_id),
-        )
+        if coords is None:
+            cursor.execute(
+                "UPDATE farms SET name = ?, location = ? WHERE id = ?",
+                (name, location, farm_id),
+            )
+        else:
+            cursor.execute(
+                "UPDATE farms SET name = ?, location = ?, latitude = ?, longitude = ? WHERE id = ?",
+                (name, location, coords[0], coords[1], farm_id),
+            )
         self.connection.commit()
         return cursor.rowcount > 0
 
@@ -623,6 +652,34 @@ class DatabaseManager:
         return dict(row) if row else None
 
     # ------------------------------------------------------------------
+    # App settings (generic key/value)
+    # ------------------------------------------------------------------
+    def get_setting(self, key: str, default: str = "") -> str:
+        cursor = self.connection.cursor()
+        cursor.execute("SELECT value FROM app_settings WHERE key = ?", (key,))
+        row = cursor.fetchone()
+        return row["value"] if row else default
+
+    def set_setting(self, key: str, value: str) -> None:
+        cursor = self.connection.cursor()
+        cursor.execute(
+            """
+            INSERT INTO app_settings (key, value, updated_at)
+            VALUES (?, ?, datetime('now'))
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = datetime('now')
+        """,
+            (key, value),
+        )
+        self.connection.commit()
+
+    def delete_setting(self, key: str) -> None:
+        cursor = self.connection.cursor()
+        cursor.execute("DELETE FROM app_settings WHERE key = ?", (key,))
+        self.connection.commit()
+
+    # ------------------------------------------------------------------
     # Cloud Config (credentials for bidirectional sync)
     # ------------------------------------------------------------------
     def get_cloud_config(self) -> Optional[Dict[str, Any]]:
@@ -761,8 +818,18 @@ class DatabaseManager:
     # Upsert from Cloud Sync (receive data from Cloud with origin='cloud')
     # ------------------------------------------------------------------
     def upsert_farm_from_cloud(
-        self, cloud_id: int, name: str, location: str, created_at: str
+        self,
+        cloud_id: int,
+        name: str,
+        location: str,
+        created_at: str,
+        latitude: Optional[float] = None,
+        longitude: Optional[float] = None,
     ) -> int:
+        # The cloud only sends coordinates when the farm has them; a farm
+        # without them never overwrites the ones set locally.
+        if latitude is None or longitude is None:
+            latitude = longitude = None
         cursor = self.connection.cursor()
         cursor.execute(
             "SELECT id FROM farms WHERE cloud_id = ? AND origin = 'cloud'", (cloud_id,)
@@ -770,14 +837,17 @@ class DatabaseManager:
         row = cursor.fetchone()
         if row:
             cursor.execute(
-                "UPDATE farms SET name = ?, location = ? WHERE id = ?",
-                (name, location, row["id"]),
+                "UPDATE farms SET name = ?, location = ?, "
+                "latitude = COALESCE(?, latitude), longitude = COALESCE(?, longitude) "
+                "WHERE id = ?",
+                (name, location, latitude, longitude, row["id"]),
             )
             self.connection.commit()
             return row["id"]
         cursor.execute(
-            "INSERT INTO farms (name, location, created_at, origin, cloud_id, synced_at) VALUES (?, ?, ?, 'cloud', ?, datetime('now'))",
-            (name, location, created_at, cloud_id),
+            "INSERT INTO farms (name, location, latitude, longitude, created_at, origin, cloud_id, synced_at) "
+            "VALUES (?, ?, ?, ?, ?, 'cloud', ?, datetime('now'))",
+            (name, location, latitude, longitude, created_at, cloud_id),
         )
         self.connection.commit()
         return cursor.lastrowid

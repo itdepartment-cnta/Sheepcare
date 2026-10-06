@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import { ArrowsClockwise, Barn, PencilSimple, Plus, TrashSimple } from '@phosphor-icons/react';
+import { ArrowsClockwise, Barn, MapPin, PencilSimple, Plus, TrashSimple } from '@phosphor-icons/react';
 import { farmsApi } from '../api';
-import type { Farm } from '../api';
+import type { Farm, FarmCoordinates } from '../api';
 import { mensajeDeError } from '../lib/errors';
 import { fecha, numero } from '../lib/format';
 import {
-    avisar, Button, Card, CardHeader, ConfirmDialog, EmptyState, ErrorState, IconButton, PageHeader,
+    avisar, Button, Card, CardHeader, Chip, ConfirmDialog, EmptyState, ErrorState, IconButton, PageHeader,
     Table, TableSkeleton, Td, TextField, Th, Tr,
 } from '../components/ui';
+
+const ERROR_COORDENADAS =
+    'La latitud (de -90 a 90) y la longitud (de -180 a 180) deben ser números y rellenarse las dos, o dejarse vacías.';
 
 export default function FarmsView() {
     const [farms, setFarms] = useState<Farm[] | null>(null);
@@ -19,6 +22,9 @@ export default function FarmsView() {
     const [editing, setEditing] = useState<Farm | null>(null);
     const [name, setName] = useState('');
     const [location, setLocation] = useState('');
+    const [latitude, setLatitude] = useState('');
+    const [longitude, setLongitude] = useState('');
+    const [errorCoords, setErrorCoords] = useState('');
     const [errorNombre, setErrorNombre] = useState('');
     const [errorServidor, setErrorServidor] = useState('');
     const [guardando, setGuardando] = useState(false);
@@ -43,8 +49,25 @@ export default function FarmsView() {
     const limpiarFormulario = () => {
         setName('');
         setLocation('');
+        setLatitude('');
+        setLongitude('');
+        setErrorCoords('');
         setErrorNombre('');
         setErrorServidor('');
+    };
+
+    // Acepta coma decimal ("42,8"). Devuelve null si ambos están vacíos y
+    // undefined si hay un valor inválido o falta uno de los dos.
+    const parseCoords = (): FarmCoordinates | null | undefined => {
+        const lat = latitude.trim().replace(',', '.');
+        const lon = longitude.trim().replace(',', '.');
+        if (!lat && !lon) return null;
+        if (!lat || !lon) return undefined;
+        const la = Number(lat);
+        const lo = Number(lon);
+        if (!Number.isFinite(la) || !Number.isFinite(lo)) return undefined;
+        if (la < -90 || la > 90 || lo < -180 || lo > 180) return undefined;
+        return { latitude: la, longitude: lo };
     };
 
     const cerrarFormulario = () => {
@@ -63,6 +86,9 @@ export default function FarmsView() {
         setEditing(f);
         setName(f.name);
         setLocation(f.location);
+        setLatitude(f.latitude != null ? String(f.latitude) : '');
+        setLongitude(f.longitude != null ? String(f.longitude) : '');
+        setErrorCoords('');
         setErrorNombre('');
         setErrorServidor('');
         setShowForm(true);
@@ -74,14 +100,21 @@ export default function FarmsView() {
             setErrorNombre('Pon un nombre a la granja.');
             return;
         }
+        const parsed = parseCoords();
+        if (parsed === undefined) {
+            setErrorCoords(ERROR_COORDENADAS);
+            return;
+        }
+        setErrorCoords('');
         setErrorNombre('');
         setErrorServidor('');
         setGuardando(true);
         try {
             if (editing) {
-                await farmsApi.update(editing.id, name, location);
+                // Al editar siempre se envían: vacías significa «quitar las coordenadas».
+                await farmsApi.update(editing.id, name, location, parsed ?? { latitude: null, longitude: null });
             } else {
-                await farmsApi.create(name, location);
+                await farmsApi.create(name, location, parsed ?? undefined);
             }
             avisar.ok(editing ? 'Granja actualizada' : 'Granja creada', name.trim());
             cerrarFormulario();
@@ -152,6 +185,32 @@ export default function FarmsView() {
                             />
                         </div>
 
+                        <div>
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                <TextField
+                                    label="Latitud"
+                                    inputMode="decimal"
+                                    invalid={!!errorCoords}
+                                    value={latitude}
+                                    onChange={e => { setLatitude(e.target.value); setErrorCoords(''); }}
+                                />
+                                <TextField
+                                    label="Longitud"
+                                    inputMode="decimal"
+                                    invalid={!!errorCoords}
+                                    value={longitude}
+                                    onChange={e => { setLongitude(e.target.value); setErrorCoords(''); }}
+                                />
+                            </div>
+                            {errorCoords ? (
+                                <p role="alert" className="mt-1.5 text-small font-medium text-danger-text">{errorCoords}</p>
+                            ) : (
+                                <p className="mt-1.5 text-small text-ink-3">
+                                    Opcionales. Por ejemplo, 42,8125 y -1,6458. Permiten consultar el tiempo de la granja.
+                                </p>
+                            )}
+                        </div>
+
                         {errorServidor && (
                             <p role="alert" className="rounded-md bg-danger-bg px-3 py-2.5 text-small text-danger-text">{errorServidor}</p>
                         )}
@@ -172,7 +231,7 @@ export default function FarmsView() {
                         Revisa que el servicio local esté en marcha e inténtalo de nuevo.
                     </ErrorState>
                 ) : farms === null ? (
-                    <TableSkeleton rows={4} cols={5} />
+                    <TableSkeleton rows={4} cols={6} />
                 ) : farms.length === 0 ? (
                     <EmptyState
                         icon={<Barn aria-hidden="true" />}
@@ -182,12 +241,13 @@ export default function FarmsView() {
                         Crea una granja para empezar a subir datos de celo y de calidad de leche.
                     </EmptyState>
                 ) : (
-                    <Table caption="Granjas registradas" minWidth="40rem">
+                    <Table caption="Granjas registradas" minWidth="48rem">
                         <thead>
                             <tr>
                                 <Th align="right">N.º</Th>
                                 <Th>Granja</Th>
                                 <Th>Ubicación</Th>
+                                <Th>Coordenadas</Th>
                                 <Th>Alta</Th>
                                 <Th align="right"><span className="sr-only">Acciones</span></Th>
                             </tr>
@@ -198,6 +258,16 @@ export default function FarmsView() {
                                     <Td numeric muted>{numero(f.id)}</Td>
                                     <Td strong>{f.name}</Td>
                                     <Td muted={!f.location}>{f.location || '—'}</Td>
+                                    <Td>
+                                        {f.latitude != null && f.longitude != null ? (
+                                            <span className="inline-flex items-center gap-1.5 tabular text-ink-2">
+                                                <MapPin size={14} aria-hidden="true" className="text-brand-700" />
+                                                {numero(f.latitude, 4)}, {numero(f.longitude, 4)}
+                                            </span>
+                                        ) : (
+                                            <Chip>Sin coordenadas</Chip>
+                                        )}
+                                    </Td>
                                     <Td muted>{fecha(f.created_at)}</Td>
                                     <Td>
                                         <div className="flex justify-end gap-0.5">
