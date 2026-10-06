@@ -10,6 +10,7 @@ const UploadView = lazy(() => import('./views/UploadView'));
 const HistoryView = lazy(() => import('./views/History'));
 const AnimalsView = lazy(() => import('./views/Animals'));
 const CalendarView = lazy(() => import('./views/Calendar'));
+const WeatherView = lazy(() => import('./views/Weather'));
 const SettingsView = lazy(() => import('./views/Settings'));
 
 function App() {
@@ -23,6 +24,7 @@ function App() {
                 <Route path="history" element={<HistoryView />} />
                 <Route path="animals" element={<AnimalsView />} />
                 <Route path="calendar" element={<CalendarView />} />
+                <Route path="weather" element={<WeatherView />} />
                 <Route path="settings" element={<SettingsView />} />
             </Route>
 

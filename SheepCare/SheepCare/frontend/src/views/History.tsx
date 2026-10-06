@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { ArrowsClockwise, ClockCounterClockwise } from '@phosphor-icons/react';
-import { farmsApi, resultsApi, milkQualityApi } from '../api';
+import { farmsApi, resultsApi, milkQualityApi, reportsApi } from '../api';
 import type { Farm, DetectionResult, MilkQualityResult } from '../api';
+import FarmReportCard from '../components/FarmReportCard';
 import { fecha, porcentaje } from '../lib/format';
 import {
     Button, Card, Chip, EmptyState, ErrorState, PageHeader, SelectField, Table, TableSkeleton, Td, Th, Tr,
@@ -134,7 +135,24 @@ export default function HistoryView() {
                 }
             />
 
-            <Card padded={false} index={0}>
+            <FarmReportCard
+                index={0}
+                farms={farms}
+                id="informe-celo"
+                titulo="Informe de celo (PDF)"
+                descripcion="Resumen de la detección de celo de una granja: animales en celo, gráfica por subida y detalle."
+                descargar={reportsApi.estrusPdf}
+            />
+            <FarmReportCard
+                index={1}
+                farms={farms}
+                id="informe-leche"
+                titulo="Informe de calidad de leche (PDF)"
+                descripcion="Resumen de la calidad de leche (SCC) de una granja: muestras con calidad mala, gráfica por subida y detalle."
+                descargar={reportsApi.milkQualityPdf}
+            />
+
+            <Card padded={false} index={2}>
                 <div className="grid grid-cols-1 gap-4 border-b border-line p-4 sm:grid-cols-3 sm:p-5">
                     <SelectField label="Granja" value={farmFilter} onChange={e => setFarmFilter(Number(e.target.value) || '')}>
                         <option value="">Todas las granjas</option>

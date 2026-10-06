@@ -221,4 +221,72 @@ export const settingsApi = {
     clearWeatherKey: () => api.delete<WeatherConfig>('/settings/weather').then(r => r.data),
 };
 
+// ── Tiempo y estrés térmico (OpenAgri Weather Service) ─────────────────
+export type NivelTHI = 'sin_estres' | 'leve' | 'moderado' | 'severo' | 'critico';
+
+export interface THIActual {
+    farm_id: number;
+    latitude: number;
+    longitude: number;
+    thi: number;
+    level: NivelTHI;
+}
+
+// Un instante de la previsión (cada 3 h). Las marcas de tiempo llegan en UTC
+// con «Z». thi y level son null si falta temperatura o humedad.
+export interface PuntoPrevision {
+    timestamp: string;
+    temperature: number | null;
+    humidity: number | null;
+    wind_speed: number | null;
+    rain_probability: number | null;
+    rain_mm_3h: number | null;
+    thi: number | null;
+    level: NivelTHI | null;
+}
+
+export interface Prevision {
+    farm_id: number;
+    latitude: number;
+    longitude: number;
+    forecast: PuntoPrevision[];
+}
+
+// Las coordenadas salen siempre de la granja en el servidor, no se envían.
+export const weatherApi = {
+    thi: (farmId: number) =>
+        api.get<THIActual>(`/weather/farms/${farmId}/thi`).then(r => r.data),
+    forecast: (farmId: number) =>
+        api.get<Prevision>(`/weather/farms/${farmId}/forecast`).then(r => r.data),
+};
+
+// ── Informes en PDF (OpenAgri Reporting Service) ───────────────────────
+// Las fechas son opcionales ('AAAA-MM-DD', inclusive). Sin ellas, el informe
+// incluye todos los datos de la granja. El PDF puede tardar unos segundos.
+export interface InformePdf {
+    blob: Blob;
+    filename: string;
+}
+
+const pdfDeGranja = (tipo: 'estrus-report' | 'milk-quality-report', farmId: number, fromDate?: string, toDate?: string) =>
+    api
+        .get<Blob>(`/reporting/farms/${farmId}/${tipo}`, {
+            params: { from_date: fromDate || undefined, to_date: toDate || undefined, lang: 'es' },
+            responseType: 'blob',
+            timeout: 60000,
+        })
+        .then((r): InformePdf => ({
+            blob: r.data,
+            filename:
+                /filename="([^"]+)"/.exec(r.headers['content-disposition'] ?? '')?.[1] ??
+                'informe.pdf',
+        }));
+
+export const reportsApi = {
+    estrusPdf: (farmId: number, fromDate?: string, toDate?: string) =>
+        pdfDeGranja('estrus-report', farmId, fromDate, toDate),
+    milkQualityPdf: (farmId: number, fromDate?: string, toDate?: string) =>
+        pdfDeGranja('milk-quality-report', farmId, fromDate, toDate),
+};
+
 export default api;

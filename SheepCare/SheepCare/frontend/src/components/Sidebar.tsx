@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import {
-    SquaresFour, Barn, UploadSimple, ClockCounterClockwise, PawPrint,
+    SquaresFour, Barn, UploadSimple, ClockCounterClockwise, PawPrint, CloudSun,
     CalendarBlank, GearSix, Moon, Sun, ArrowUpRight,
 } from '@phosphor-icons/react';
 import type { Icon } from '@phosphor-icons/react';
@@ -22,6 +22,7 @@ const GRUPOS: { titulo: string; items: Item[] }[] = [
             { to: '/', icon: SquaresFour, label: 'Panel' },
             { to: '/upload', icon: UploadSimple, label: 'Subir datos' },
             { to: '/history', icon: ClockCounterClockwise, label: 'Historial' },
+            { to: '/weather', icon: CloudSun, label: 'Tiempo' },
         ],
     },
     {
