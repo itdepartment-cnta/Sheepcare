@@ -12,10 +12,29 @@ Cloud returns JWT tokens for authentication.
 
 import requests
 import logging
+from datetime import datetime
 from typing import Optional, Dict, Any, List
 from ..data_access.db_manager import DatabaseManager
 
 logger = logging.getLogger(__name__)
+
+
+def _fecha_o_none(valor: Optional[str]) -> Optional[str]:
+    """La fecha de una lectura, o None si lo que hay guardado no es una fecha.
+
+    Con un Excel cuyas cabeceras son «dia 1», «dia 2», el parser guarda la
+    etiqueta de la columna («date_1», «date_2») en lugar de una fecha. La nube
+    rechazaba eso con un 500 y la sincronización quedaba atascada. Se envía
+    vacía: una lectura sin fecha es válida, el modelo de celo solo usa el orden.
+    """
+    if valor is None:
+        return None
+    texto = str(valor).strip()
+    try:
+        datetime.fromisoformat(texto)
+    except ValueError:
+        return None
+    return texto
 
 
 class SyncService:
@@ -211,7 +230,7 @@ class SyncService:
                 {
                     "origin_id": r["id"],
                     "animal_origin_id": r["animal_id"],
-                    "reading_date": r["reading_date"],
+                    "reading_date": _fecha_o_none(r["reading_date"]),
                     "value": r["value"],
                     "source_file": r.get("source_file", ""),
                 }
