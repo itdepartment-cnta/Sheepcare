@@ -137,10 +137,7 @@ def preparar_datos_leche(
                 "upload_date": _hora_local(r["upload_date"]),
                 "filename": r.get("filename") or "",
             }
-        # En la version local la muestra se guarda con su etiqueta en `animals`
-        muestras[subida].append(
-            {"sample_id": r.get("animal_tag") or str(r["animal_id"]), "result": codigo}
-        )
+        muestras[subida].append({"sample_id": r["sample_id"], "result": codigo})
 
     return {
         "farm_name": granja["name"],

@@ -8,6 +8,8 @@ import os
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Tuple
 
+from .milk_migration import migrate_if_needed as migrate_milk_if_needed
+
 
 class DatabaseManager:
     """Singleton that manages the SQLite database connection and operations."""
@@ -124,13 +126,18 @@ class DatabaseManager:
                 FOREIGN KEY (farm_id) REFERENCES farms(id) ON DELETE CASCADE
             );
 
+            -- Las muestras de leche se identifican por `sample_id` (texto), no por
+            -- un animal: como en la nube. Las bases anteriores se migran abajo.
             CREATE TABLE IF NOT EXISTS milk_quality_results (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                animal_id    INTEGER NOT NULL,
+                sample_id    TEXT    NOT NULL,
                 upload_id    INTEGER NOT NULL,
                 result       TEXT    NOT NULL CHECK (result IN ('Lower', 'Upper')),
                 created_at   DATETIME NOT NULL DEFAULT (datetime('now')),
-                FOREIGN KEY (animal_id) REFERENCES animals(id) ON DELETE CASCADE,
+                origin       TEXT    DEFAULT 'edge',
+                cloud_id     INTEGER,
+                synced_at    DATETIME,
+                is_synced    INTEGER NOT NULL DEFAULT 0,
                 FOREIGN KEY (upload_id) REFERENCES milk_quality_uploads(id) ON DELETE CASCADE
             );
 
@@ -188,6 +195,9 @@ class DatabaseManager:
             ("detection_results", "origin", "TEXT", "'edge'"),
             ("detection_results", "cloud_id", "INTEGER", "NULL"),
             ("detection_results", "synced_at", "DATETIME", "NULL"),
+            ("milk_quality_uploads", "origin", "TEXT", "'edge'"),
+            ("milk_quality_uploads", "cloud_id", "INTEGER", "NULL"),
+            ("milk_quality_uploads", "synced_at", "DATETIME", "NULL"),
         ]
         for table, col, col_type, default in migrations:
             try:
@@ -198,6 +208,10 @@ class DatabaseManager:
                 pass  # Column already exists
 
         self.connection.commit()
+
+        # Bases anteriores: la leche pasa de «un animal por muestra» a `sample_id`.
+        # Hace copia de seguridad y es transaccional (ver milk_migration.py).
+        migrate_milk_if_needed(self.connection, self.db_path)
 
     # ------------------------------------------------------------------
     # Farms CRUD
@@ -579,11 +593,11 @@ class DatabaseManager:
             """)
         return [dict(row) for row in cursor.fetchall()]
 
-    def save_milk_quality_result(self, animal_id: int, upload_id: int, result: str) -> int:
+    def save_milk_quality_result(self, sample_id: str, upload_id: int, result: str) -> int:
         cursor = self.connection.cursor()
         cursor.execute(
-            "INSERT INTO milk_quality_results (animal_id, upload_id, result) VALUES (?, ?, ?)",
-            (animal_id, upload_id, result),
+            "INSERT INTO milk_quality_results (sample_id, upload_id, result) VALUES (?, ?, ?)",
+            (sample_id, upload_id, result),
         )
         self.connection.commit()
         return cursor.lastrowid
@@ -595,10 +609,9 @@ class DatabaseManager:
     ) -> List[Dict[str, Any]]:
         cursor = self.connection.cursor()
         query = """
-            SELECT mr.*, a.external_tag as animal_tag, a.name as animal_name,
+            SELECT mr.*, mr.sample_id as animal_tag, '' as animal_name,
                    u.filename, u.upload_date, f.name as farm_name
             FROM milk_quality_results mr
-            JOIN animals a ON mr.animal_id = a.id
             JOIN milk_quality_uploads u ON mr.upload_id = u.id
             JOIN farms f ON u.farm_id = f.id
             WHERE 1=1

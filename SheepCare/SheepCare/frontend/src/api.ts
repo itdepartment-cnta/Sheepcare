@@ -112,7 +112,9 @@ export interface MilkQualityUploadSummary {
 
 export interface MilkQualityResult {
     id: number;
-    animal_id: number;
+    sample_id: string;
+    // Obsoleto: la muestra ya no es un animal. Usa animal_tag (= sample_id).
+    animal_id?: number | null;
     upload_id: number;
     result: string;
     created_at: string;

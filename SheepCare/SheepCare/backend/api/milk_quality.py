@@ -62,12 +62,14 @@ class MilkQualityUploadDetailResponse(MilkQualityUploadSummaryResponse):
 
 class MilkQualityResultResponse(BaseModel):
     id: int
-    animal_id: int
+    sample_id: str
     upload_id: int
     result: str
     created_at: str
+    # Alias de sample_id para la interfaz: la muestra ya no es un animal
     animal_tag: str
-    animal_name: str
+    animal_name: str = ""
+    animal_id: Optional[int] = None
     filename: str
     upload_date: str
     farm_name: str
@@ -154,8 +156,7 @@ async def upload_file(
 
     for sample_id_raw, result_label in zip(df[ID_COLUMN], predictions):
         sample_id = str(sample_id_raw).strip()
-        db_animal_id = db.add_animal(farm_id, sample_id, name=sample_id)
-        db.save_milk_quality_result(db_animal_id, upload_id, result_label)
+        db.save_milk_quality_result(sample_id, upload_id, result_label)
 
         if result_label == "Lower":
             lower_count += 1
