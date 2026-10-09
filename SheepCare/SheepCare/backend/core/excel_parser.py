@@ -22,6 +22,36 @@ class ExcelParser:
     """
 
     @staticmethod
+    def _numerar_lecturas(animals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Numera las lecturas y decide, para todo el fichero, si llevan fecha.
+
+        Cada lectura sale con `order` (1 la primera del animal, 2 la segunda): es lo
+        único que garantiza el fichero. La fecha solo se conserva si TODAS las
+        cabeceras eran fechas reales; si una sola no lo es, van todas sin fecha
+        (`None`). Antes se guardaba la etiqueta de la columna («date_1», «dia 2»)
+        como si fuera una fecha. Mezclar lecturas con y sin fecha en una misma
+        subida parte el historial en dos, y por eso la decisión es del fichero
+        entero (igual que en el backend público).
+        """
+
+        def es_fecha_iso(valor) -> bool:
+            try:
+                datetime.strptime(str(valor), "%Y-%m-%d")
+                return True
+            except (ValueError, TypeError):
+                return False
+
+        con_fecha = all(
+            es_fecha_iso(r.get("date")) for a in animals for r in a["readings"]
+        )
+        for animal in animals:
+            for i, lectura in enumerate(animal["readings"]):
+                lectura["order"] = i + 1
+                if not con_fecha:
+                    lectura["date"] = None
+        return animals
+
+    @staticmethod
     def parse(file_path: str) -> List[Dict[str, Any]]:
         """
         Parse a file and return structured animal data.
@@ -98,27 +128,17 @@ class ExcelParser:
         if not rows:
             return []
 
-        # Detect date columns (column index 1 onwards, i.e., B onward)
-        # Try to parse column B+ headers as dates
-        date_columns = []
-        sample_row = rows[0]
-        for col_idx in range(1, len(sample_row)):  # Column B = index 1
-            val = sample_row[col_idx]
-            date_str = ExcelParser._try_parse_date(val)
-            date_columns.append(date_str)
-
-        # If header row had dates, check next row too for validation
-        if not any(date_columns):
-            # Try looking for dates in row 0 (which wasn't a header)
-            for col_idx in range(1, len(header)):
-                val = header[col_idx]
-                date_str = ExcelParser._try_parse_date(val)
-                date_columns.append(date_str)
+        # Las fechas, si las hay, están en las celdas B en adelante de la PRIMERA fila
+        # (la cabecera). Antes se buscaban en la primera fila de DATOS: con la
+        # cabecera ya saltada eso nunca encontraba nada, y hasta un Excel con fechas
+        # reales salía con «date_1», «date_2».
+        date_columns = [
+            ExcelParser._try_parse_date(header[col_idx]) for col_idx in range(1, len(header))
+        ]
 
         if not any(date_columns):
-            # Fallback: use column indices as-is (no date parsing)
-            for col_idx in range(1, len(sample_row)):
-                date_columns.append(f"col_{col_idx}")
+            # Sin fechas: se numeran las columnas (`_numerar_lecturas` las deja sin fecha)
+            date_columns = [f"col_{col_idx}" for col_idx in range(1, len(rows[0]))]
 
         # Parse each animal row
         result = []
@@ -160,7 +180,7 @@ class ExcelParser:
                     }
                 )
 
-        return result
+        return ExcelParser._numerar_lecturas(result)
 
     @staticmethod
     def _try_parse_date(val) -> Optional[str]:
@@ -277,7 +297,7 @@ class ExcelParser:
                     }
                 )
 
-        return result
+        return ExcelParser._numerar_lecturas(result)
 
     @staticmethod
     def detect_date_columns(file_path: str) -> List[str]:

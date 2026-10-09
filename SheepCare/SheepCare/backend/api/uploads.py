@@ -170,6 +170,8 @@ async def upload_file(
                 reading["date"],
                 reading["value"],
                 source_file=file.filename,
+                reading_order=reading.get("order"),
+                upload_id=upload_id,
             )
 
         # Run detection on the time series

@@ -31,7 +31,10 @@ class AnimalResponse(BaseModel):
 
 class AnimalReadingResponse(BaseModel):
     id: int
-    reading_date: str
+    # None cuando el Excel no traía fechas: la sitúan reading_order y upload_id
+    reading_date: Optional[str] = None
+    reading_order: Optional[int] = None
+    upload_id: Optional[int] = None
     value: float
     source_file: str
 

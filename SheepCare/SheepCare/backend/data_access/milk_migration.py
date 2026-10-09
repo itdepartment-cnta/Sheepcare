@@ -106,9 +106,9 @@ def analyze(conn: sqlite3.Connection) -> Dict[str, Any]:
     }
 
 
-def backup(conn: sqlite3.Connection, db_path: str) -> str:
+def backup(conn: sqlite3.Connection, db_path: str, etiqueta: str = "leche") -> str:
     """Copia de seguridad consistente (API de copia de SQLite, válida con WAL)."""
-    destino = f"{db_path}.antes-leche-{datetime.now():%Y%m%d-%H%M%S}.bak"
+    destino = f"{db_path}.antes-{etiqueta}-{datetime.now():%Y%m%d-%H%M%S}.bak"
     copia = sqlite3.connect(destino)
     try:
         conn.backup(copia)

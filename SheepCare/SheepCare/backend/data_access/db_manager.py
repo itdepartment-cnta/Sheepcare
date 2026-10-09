@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any, Tuple
 
 from .milk_migration import migrate_if_needed as migrate_milk_if_needed
+from .readings_migration import migrate_if_needed as migrate_readings_if_needed
 
 
 class DatabaseManager:
@@ -81,13 +82,22 @@ class DatabaseManager:
                 UNIQUE(farm_id, external_tag)
             );
 
+            -- La fecha es opcional: el Excel de celo ya no la trae y rotula las columnas
+            -- «dia 1», «dia 2». Entonces lo que sitúa la lectura es `reading_order`
+            -- dentro de su `upload_id`, como en la nube. Bases anteriores: se migran abajo.
             CREATE TABLE IF NOT EXISTS animal_readings (
-                id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                animal_id    INTEGER NOT NULL,
-                reading_date DATE    NOT NULL,
-                value        FLOAT   NOT NULL,
-                source_file  TEXT    NOT NULL DEFAULT '',
-                FOREIGN KEY (animal_id) REFERENCES animals(id) ON DELETE CASCADE
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                animal_id     INTEGER NOT NULL,
+                reading_date  DATE,
+                value         FLOAT   NOT NULL,
+                source_file   TEXT    NOT NULL DEFAULT '',
+                reading_order INTEGER,
+                upload_id     INTEGER,
+                origin        TEXT    DEFAULT 'edge',
+                cloud_id      INTEGER,
+                synced_at     DATETIME,
+                FOREIGN KEY (animal_id) REFERENCES animals(id) ON DELETE CASCADE,
+                FOREIGN KEY (upload_id) REFERENCES uploads(id) ON DELETE SET NULL
             );
 
             CREATE TABLE IF NOT EXISTS uploads (
@@ -213,6 +223,8 @@ class DatabaseManager:
         # Bases anteriores: la leche pasa de «un animal por muestra» a `sample_id`.
         # Hace copia de seguridad y es transaccional (ver milk_migration.py).
         migrate_milk_if_needed(self.connection, self.db_path)
+        # Y la fecha de las lecturas pasa a ser opcional (ver readings_migration.py).
+        migrate_readings_if_needed(self.connection, self.db_path)
 
     # ------------------------------------------------------------------
     # Farms CRUD
@@ -345,12 +357,21 @@ class DatabaseManager:
     # Animal Readings
     # ------------------------------------------------------------------
     def save_animal_reading(
-        self, animal_id: int, reading_date: str, value: float, source_file: str = ""
+        self,
+        animal_id: int,
+        reading_date: Optional[str],
+        value: float,
+        source_file: str = "",
+        reading_order: Optional[int] = None,
+        upload_id: Optional[int] = None,
     ) -> int:
+        """Guarda una lectura. `reading_date` es None si el Excel no traía fechas:
+        entonces la sitúan `reading_order` dentro de su `upload_id`."""
         cursor = self.connection.cursor()
         cursor.execute(
-            "INSERT INTO animal_readings (animal_id, reading_date, value, source_file) VALUES (?, ?, ?, ?)",
-            (animal_id, reading_date, value, source_file),
+            "INSERT INTO animal_readings (animal_id, reading_date, value, source_file, "
+            "reading_order, upload_id) VALUES (?, ?, ?, ?, ?, ?)",
+            (animal_id, reading_date, value, source_file, reading_order, upload_id),
         )
         self.connection.commit()
         return cursor.lastrowid
@@ -358,7 +379,13 @@ class DatabaseManager:
     def get_animal_readings(self, animal_id: int) -> List[Dict[str, Any]]:
         cursor = self.connection.cursor()
         cursor.execute(
-            "SELECT * FROM animal_readings WHERE animal_id = ? ORDER BY reading_date",
+            # Mismo orden que la nube: por la fecha de la subida si la lectura no
+            # tiene la suya, y dentro de la subida por su orden.
+            "SELECT r.* FROM animal_readings r "
+            "LEFT JOIN uploads u ON u.id = r.upload_id "
+            "WHERE r.animal_id = ? "
+            "ORDER BY COALESCE(u.upload_date, r.reading_date), r.upload_id, "
+            "r.reading_order, r.reading_date, r.id",
             (animal_id,),
         )
         return [dict(row) for row in cursor.fetchall()]
@@ -995,9 +1022,11 @@ class DatabaseManager:
         self,
         animal_id: int,
         cloud_id: int,
-        reading_date: str,
+        reading_date: Optional[str],
         value: float,
         source_file: str,
+        reading_order: Optional[int] = None,
+        upload_id: Optional[int] = None,
     ) -> int:
         cursor = self.connection.cursor()
         cursor.execute(
@@ -1008,8 +1037,10 @@ class DatabaseManager:
         if row:
             return row["id"]
         cursor.execute(
-            "INSERT INTO animal_readings (animal_id, reading_date, value, source_file, origin, cloud_id, synced_at) VALUES (?, ?, ?, ?, 'cloud', ?, datetime('now'))",
-            (animal_id, reading_date, value, source_file, cloud_id),
+            "INSERT INTO animal_readings (animal_id, reading_date, value, source_file, "
+            "reading_order, upload_id, origin, cloud_id, synced_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, 'cloud', ?, datetime('now'))",
+            (animal_id, reading_date, value, source_file, reading_order, upload_id, cloud_id),
         )
         self.connection.commit()
         return cursor.lastrowid

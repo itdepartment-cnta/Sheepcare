@@ -501,20 +501,23 @@ class SyncService:
 
             # Process readings
             for reading in data.get("readings", []):
-                if not reading.get("reading_date"):
-                    # Lecturas por orden (sin fecha): el esquema local exige fecha
-                    logger.warning(
-                        "Lectura cloud %s sin reading_date, se omite", reading.get("id")
-                    )
-                    continue
+                # Puede venir sin fecha (el Excel de celo ya no la trae): entonces la
+                # sitúan su orden y su subida, que llega en este mismo pull.
                 animal_id = self._resolve_cloud_animal_id(reading["animal_id"])
                 if animal_id:
+                    upload_local = (
+                        self._resolve_cloud_upload_id(reading["upload_id"])
+                        if reading.get("upload_id")
+                        else None
+                    )
                     new_id = self._db.upsert_reading_from_cloud(
                         animal_id,
                         reading["id"],
-                        reading["reading_date"],
+                        reading.get("reading_date"),
                         reading["value"],
                         reading.get("source_file", ""),
+                        reading.get("reading_order"),
+                        upload_local,
                     )
                     if new_id:
                         confirmed_ids.append(("animal_readings", reading["id"]))
