@@ -827,6 +827,53 @@ class DatabaseManager:
         )
         self.connection.commit()
 
+    # Leche. Solo se envían subidas FINALIZADAS (`processed_at`): la nube no
+    # actualiza una subida que ya conoce, y una sincronización automática en
+    # mitad de una subida mandaría los contadores a cero para siempre.
+    def get_unsynced_milk_uploads_to_cloud(self) -> List[Dict[str, Any]]:
+        cursor = self.connection.cursor()
+        cursor.execute("""
+            SELECT u.*, f.cloud_id AS farm_cloud_id
+            FROM milk_quality_uploads u
+            JOIN farms f ON f.id = u.farm_id
+            WHERE u.processed_at IS NOT NULL
+              AND ((u.origin = 'edge' AND (u.cloud_id IS NULL OR u.synced_at IS NULL))
+                   OR u.origin IS NULL)
+            ORDER BY u.id
+        """)
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_unsynced_milk_results_to_cloud(self) -> List[Dict[str, Any]]:
+        cursor = self.connection.cursor()
+        cursor.execute("""
+            SELECT r.*, u.cloud_id AS upload_cloud_id
+            FROM milk_quality_results r
+            JOIN milk_quality_uploads u ON u.id = r.upload_id
+            WHERE u.processed_at IS NOT NULL
+              AND ((r.origin = 'edge' AND (r.cloud_id IS NULL OR r.synced_at IS NULL))
+                   OR r.origin IS NULL)
+            ORDER BY r.id
+        """)
+        return [dict(row) for row in cursor.fetchall()]
+
+    def mark_milk_upload_synced(self, upload_id: int, cloud_id: int) -> None:
+        cursor = self.connection.cursor()
+        cursor.execute(
+            "UPDATE milk_quality_uploads SET cloud_id = ?, synced_at = datetime('now'), "
+            "origin = 'edge' WHERE id = ?",
+            (cloud_id, upload_id),
+        )
+        self.connection.commit()
+
+    def mark_milk_result_synced(self, result_id: int, cloud_id: int) -> None:
+        cursor = self.connection.cursor()
+        cursor.execute(
+            "UPDATE milk_quality_results SET cloud_id = ?, synced_at = datetime('now'), "
+            "is_synced = 1, origin = 'edge' WHERE id = ?",
+            (cloud_id, result_id),
+        )
+        self.connection.commit()
+
     # ------------------------------------------------------------------
     # Upsert from Cloud Sync (receive data from Cloud with origin='cloud')
     # ------------------------------------------------------------------
@@ -973,6 +1020,60 @@ class DatabaseManager:
                 created_at,
                 cloud_id,
             ),
+        )
+        self.connection.commit()
+        return cursor.lastrowid
+
+    def upsert_milk_upload_from_cloud(
+        self,
+        farm_id: int,
+        cloud_id: int,
+        filename: str,
+        upload_date: str,
+        total_samples: int,
+        lower_count: int,
+        upper_count: int,
+    ) -> int:
+        cursor = self.connection.cursor()
+        cursor.execute(
+            "SELECT id FROM milk_quality_uploads WHERE cloud_id = ? AND origin = 'cloud'",
+            (cloud_id,),
+        )
+        row = cursor.fetchone()
+        if row:
+            return row["id"]
+        # processed_at = upload_date: viene ya procesada de la nube
+        cursor.execute(
+            "INSERT INTO milk_quality_uploads (farm_id, filename, upload_date, processed_at, "
+            "total_samples, lower_count, upper_count, origin, cloud_id, synced_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, 'cloud', ?, datetime('now'))",
+            (farm_id, filename, upload_date, upload_date, total_samples,
+             lower_count, upper_count, cloud_id),
+        )
+        self.connection.commit()
+        return cursor.lastrowid
+
+    def upsert_milk_result_from_cloud(
+        self,
+        upload_id: int,
+        cloud_id: int,
+        sample_id: str,
+        result: str,
+        created_at: str,
+    ) -> int:
+        cursor = self.connection.cursor()
+        cursor.execute(
+            "SELECT id FROM milk_quality_results WHERE cloud_id = ? AND origin = 'cloud'",
+            (cloud_id,),
+        )
+        row = cursor.fetchone()
+        if row:
+            return row["id"]
+        cursor.execute(
+            "INSERT INTO milk_quality_results (sample_id, upload_id, result, created_at, "
+            "is_synced, origin, cloud_id, synced_at) "
+            "VALUES (?, ?, ?, ?, 1, 'cloud', ?, datetime('now'))",
+            (sample_id, upload_id, result, created_at, cloud_id),
         )
         self.connection.commit()
         return cursor.lastrowid
