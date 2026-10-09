@@ -2,15 +2,18 @@
 Settings API - System configuration, sync control, and cloud credentials.
 """
 
+import logging
 import os
+import time
 from datetime import datetime, timezone
-from fastapi import APIRouter, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, field_validator
 from typing import Optional
 from ..data_access.db_manager import DatabaseManager
 from ..data_access.sync_manager import SyncService
 from ..utils.helpers import get_project_root
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 db = DatabaseManager()
 
@@ -188,6 +191,40 @@ async def clear_cloud_config():
     return {"success": True, "message": "Cloud configuration removed"}
 
 
+def write_weather_key_file(key: str) -> None:
+    """Deja la clave donde Weather la relee en cada uso (el launcher fija la ruta
+    en OPENWEATHERMAP_KEY_FILE). Una clave vacia borra el fichero. Sin ruta
+    configurada (desarrollo, Docker) no hace nada."""
+    path = os.environ.get("OPENWEATHERMAP_KEY_FILE", "")
+    if not path:
+        return
+    ultimo = None
+    for _ in range(5):
+        # Weather puede estar leyendo el fichero justo ahora (Windows lo bloquea)
+        try:
+            if key:
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                tmp = path + ".tmp"
+                with open(tmp, "w", encoding="utf-8") as f:
+                    f.write(key)
+                os.replace(tmp, path)
+            elif os.path.exists(path):
+                os.remove(path)
+            return
+        except OSError as e:
+            ultimo = e
+            time.sleep(0.1)
+    raise ultimo
+
+
+def sync_weather_key_file() -> None:
+    """Al arrancar: vuelve a dejar en disco la clave guardada (p. ej. tras reinstalar)."""
+    try:
+        write_weather_key_file(db.get_setting(WEATHER_API_KEY_SETTING))
+    except OSError:
+        logger.warning("No se pudo escribir la clave de OpenWeatherMap", exc_info=True)
+
+
 def _weather_config() -> WeatherConfigResponse:
     key = db.get_setting(WEATHER_API_KEY_SETTING)
     if not key:
@@ -204,6 +241,11 @@ async def get_weather_config():
 @router.put("/weather", response_model=WeatherConfigResponse)
 async def save_weather_config(req: WeatherConfigRequest):
     """Save the user's OpenWeatherMap API key."""
+    try:
+        write_weather_key_file(req.api_key)
+    except OSError:
+        logger.exception("No se pudo escribir la clave de OpenWeatherMap")
+        raise HTTPException(500, "No se pudo guardar la clave en este equipo. Inténtalo de nuevo.")
     db.set_setting(WEATHER_API_KEY_SETTING, req.api_key)
     return _weather_config()
 
@@ -211,5 +253,10 @@ async def save_weather_config(req: WeatherConfigRequest):
 @router.delete("/weather", response_model=WeatherConfigResponse)
 async def clear_weather_config():
     """Remove the saved OpenWeatherMap API key."""
+    try:
+        write_weather_key_file("")
+    except OSError:
+        logger.exception("No se pudo borrar la clave de OpenWeatherMap")
+        raise HTTPException(500, "No se pudo eliminar la clave en este equipo. Inténtalo de nuevo.")
     db.delete_setting(WEATHER_API_KEY_SETTING)
     return _weather_config()

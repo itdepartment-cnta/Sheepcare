@@ -1,6 +1,6 @@
 """
-SheepCare Launcher — arranca PostgreSQL, FarmCalendar y el Backend,
-luego abre el navegador. Compilado con PyInstaller como app GUI sin consola.
+SheepCare Launcher — arranca PostgreSQL, MongoDB, GateKeeper, FarmCalendar,
+Weather, Reporting y el Backend, luego abre el navegador. Compilado con PyInstaller como app GUI sin consola.
 """
 
 import os
@@ -30,12 +30,21 @@ GK_ADMIN_FILE         = os.path.join(APPDATA, "gatekeeper_admin.key")
 FC_DJANGO_SECRET_FILE = os.path.join(APPDATA, "farmcalendar_django_secret.key")
 FC_ADMIN_FILE         = os.path.join(APPDATA, "farmcalendar_admin.key")
 FC_GK_SERVICE_SECRET_FILE = os.path.join(APPDATA, "farmcalendar_gatekeeper_service.key")
+WEATHER_JWT_SECRET_FILE   = os.path.join(APPDATA, "weather_jwt.key")
+REPORTING_JWT_SECRET_FILE = os.path.join(APPDATA, "reporting_jwt.key")
+# Clave de OpenWeatherMap del usuario: la escribe el backend al guardarla en
+# Ajustes y Weather la relee en cada uso (no hace falta reiniciarlo).
+OWM_KEY_FILE              = os.path.join(APPDATA, "openweathermap.key")
 
 # Directorios de trabajo para los servidores Waitress (GateKeeper/FarmCalendar
 # escriben "logs/waitress.log" relativo a su cwd). No puede ser el directorio
 # de instalación: Program Files no es escribible por un usuario normal.
 GATEKEEPER_RUN_DIR = os.path.join(APPDATA, "gatekeeper_run")
 CALENDAR_RUN_DIR   = os.path.join(APPDATA, "calendar_run")
+WEATHER_RUN_DIR    = os.path.join(APPDATA, "weather_run")
+REPORTING_RUN_DIR  = os.path.join(APPDATA, "reporting_run")
+REPORTS_DIR        = os.path.join(APPDATA, "reports")          # PDF generados (se borran solos)
+MONGO_DATA         = os.path.join(APPDATA, "mongodata")
 
 PGSQL_BIN      = os.path.join(BASE_DIR, "pgsql", "bin")
 PG_CTL         = os.path.join(PGSQL_BIN, "pg_ctl.exe")
@@ -48,6 +57,9 @@ CALENDAR_MANAGE_EXE = os.path.join(CALENDAR_DIR, "sheepcare-calendar-manage.exe"
 GATEKEEPER_DIR = os.path.join(BASE_DIR, "gatekeeper")
 GATEKEEPER_EXE = os.path.join(GATEKEEPER_DIR, "sheepcare-gatekeeper.exe")
 GATEKEEPER_MANAGE_EXE = os.path.join(GATEKEEPER_DIR, "sheepcare-gatekeeper-manage.exe")
+MONGOD_EXE     = os.path.join(BASE_DIR, "mongodb", "bin", "mongod.exe")
+WEATHER_EXE    = os.path.join(BASE_DIR, "weather", "sheepcare-weather.exe")
+REPORTING_EXE  = os.path.join(BASE_DIR, "reporting", "sheepcare-reporting.exe")
 
 APP_URL      = "http://localhost:8000"
 PG_PORT      = 5433
@@ -59,6 +71,12 @@ GK_USER      = "gatekeeper"
 GK_PASS      = "gatekeeper_pass"
 GK_DB        = "gatekeeper"
 GK_PORT      = 8001
+RP_USER      = "reporting"
+RP_PASS      = "reporting_pass"
+RP_DB        = "reporting"
+WEATHER_PORT   = 8003
+REPORTING_PORT = 8004
+MONGO_PORT     = 27018    # no el 27017 por defecto, por si el equipo ya tiene un MongoDB
 
 NO_WINDOW    = 0x08000000   # CREATE_NO_WINDOW
 DETACHED     = 0x00000008   # DETACHED_PROCESS
@@ -164,6 +182,18 @@ def start_detached(*cmd, env=None, cwd=None) -> None:
         env=env,
         cwd=cwd,
     )
+
+
+def wait_for_port(port: int, seconds: int = 30) -> bool:
+    """Espera a que 127.0.0.1:<port> acepte conexiones TCP."""
+    import socket
+    for _ in range(seconds):
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=1):
+                return True
+        except OSError:
+            time.sleep(1)
+    return False
 
 
 # ── Secretos persistidos ──────────────────────────────────────────────────────
@@ -370,6 +400,12 @@ def launch():
     run_cmd_output(PSQL, "-U", PG_SUPERUSER, "-p", str(PG_PORT),
                    "-c", f"CREATE DATABASE {GK_DB} OWNER {GK_USER};",
                    "postgres")
+    run_cmd_output(PSQL, "-U", PG_SUPERUSER, "-p", str(PG_PORT),
+                   "-c", f"CREATE USER {RP_USER} WITH PASSWORD '{RP_PASS}';",
+                   "postgres")
+    run_cmd_output(PSQL, "-U", PG_SUPERUSER, "-p", str(PG_PORT),
+                   "-c", f"CREATE DATABASE {RP_DB} OWNER {RP_USER};",
+                   "postgres")
 
     # 7. Variables de entorno para los servicios
     base_env = os.environ.copy()
@@ -509,6 +545,70 @@ def launch():
 
     start_detached(CALENDAR_EXE, env=cal_env, cwd=CALENDAR_RUN_DIR)
 
+    # 9.5 Weather (tiempo y THI) y Reporting (informes PDF). Como GateKeeper, no
+    # son dependencias duras: si fallan, el resto de SheepCare funciona igual y
+    # solo las vistas «Tiempo» e informes avisan de que no estan disponibles.
+    weather_jwt = get_or_create_secret(WEATHER_JWT_SECRET_FILE)
+    reporting_jwt = get_or_create_secret(REPORTING_JWT_SECRET_FILE)
+
+    if os.path.exists(MONGOD_EXE) and os.path.exists(WEATHER_EXE):
+        ui_status("Iniciando servicio meteorológico...", "")
+        try:
+            os.makedirs(MONGO_DATA, exist_ok=True)
+            os.makedirs(os.path.join(WEATHER_RUN_DIR, "logs"), exist_ok=True)
+            # Si ya hay un mongod nuestro en marcha (arranque anterior) no se
+            # lanza otro: el segundo fallaria por el bloqueo del directorio de datos.
+            if not wait_for_port(MONGO_PORT, 1):
+                start_detached(MONGOD_EXE, "--dbpath", MONGO_DATA, "--bind_ip", "127.0.0.1",
+                               "--port", str(MONGO_PORT),
+                               "--logpath", os.path.join(LOG_DIR, "mongod.log"),
+                               "--logappend", "--quiet")
+            if wait_for_port(MONGO_PORT, 30):
+                wt_env = os.environ.copy()
+                wt_env.update({
+                    "WEATHER_SRV_PORT": str(WEATHER_PORT),
+                    "WEATHER_SRV_HOSTNAME": "127.0.0.1",
+                    "EXTRA_ALLOWED_HOSTS": "127.0.0.1,localhost",
+                    "JWT_KEY": weather_jwt,
+                    "ALGORITHM": "HS256",
+                    "DISABLE_AUTH": "false",
+                    "WEATHER_SRV_DATABASE_URI": f"mongodb://127.0.0.1:{MONGO_PORT}",
+                    "WEATHER_SRV_DATABASE_NAME": "openagridb",
+                    "WEATHER_SRV_OPENWEATHERMAP_API_KEY_FILE": OWM_KEY_FILE,
+                    # GATEKEEPER_URL y PUSH_* sin definir a proposito: ni se registra
+                    # en GateKeeper ni escribe en Farm Calendar.
+                })
+                start_detached(WEATHER_EXE, env=wt_env, cwd=WEATHER_RUN_DIR)
+        except Exception:
+            pass
+
+    if os.path.exists(REPORTING_EXE):
+        ui_status("Iniciando servicio de informes...", "")
+        try:
+            os.makedirs(os.path.join(REPORTING_RUN_DIR, "logs"), exist_ok=True)
+            os.makedirs(REPORTS_DIR, exist_ok=True)
+            rp_env = os.environ.copy()
+            rp_env.update({
+                "REPORTING_SERVICE_NAME": "reporting",
+                "REPORTING_SERVICE_PORT": str(REPORTING_PORT),
+                "REPORTING_USING_GATEKEEPER": "false",
+                "REPORTING_BACKEND_CORS_ORIGINS": '["http://127.0.0.1:8000", "http://localhost:8000"]',
+                "REPORTING_POSTGRES_HOST": "127.0.0.1",
+                "REPORTING_POSTGRES_PORT": str(PG_PORT),
+                "REPORTING_POSTGRES_DB": RP_DB,
+                "REPORTING_POSTGRES_USER": RP_USER,
+                "REPORTING_POSTGRES_PASSWORD": RP_PASS,
+                "JWT_SIGNING_KEY": reporting_jwt,
+                "JWT_ACCESS_TOKEN_EXPIRATION_TIME": "60",
+                # Con barra final: el codigo concatena rutas a este prefijo.
+                "PDF_DIRECTORY": REPORTS_DIR.replace("\\", "/") + "/",
+                "REPORTING_PDF_RETENTION_HOURS": "1",
+                "REPORTING_PDF_CLEANUP_INTERVAL_MINUTES": "15",
+            })
+            start_detached(REPORTING_EXE, env=rp_env, cwd=REPORTING_RUN_DIR)
+        except Exception:
+            pass
+
     # 10. Arrancar Backend
     ui_status("Iniciando SheepCare...", "")
     bk_env = base_env.copy()
@@ -516,6 +616,10 @@ def launch():
     bk_env["FARMCALENDAR_API_URL"]     = "http://127.0.0.1:8002/api/v1/"
     bk_env["BACKEND_PORT"]             = "8000"
     bk_env["FARMCALENDAR_JWT_SECRET"]  = jwt_secret
+    bk_env["WEATHER_API_URL"]          = f"http://127.0.0.1:{WEATHER_PORT}"
+    bk_env["WEATHER_JWT_KEY"]          = weather_jwt
+    bk_env["REPORTING_API_URL"]        = f"http://127.0.0.1:{REPORTING_PORT}"
+    bk_env["OPENWEATHERMAP_KEY_FILE"]  = OWM_KEY_FILE
     start_detached(BACKEND_EXE, env=bk_env)
 
     # 11. Esperar al backend (max 120 s)

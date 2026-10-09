@@ -44,6 +44,7 @@ async def _auto_sync_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    settings.sync_weather_key_file()
     task = asyncio.create_task(_auto_sync_loop())
     yield
     task.cancel()

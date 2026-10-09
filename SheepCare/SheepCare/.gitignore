@@ -1,5 +1,6 @@
 # SHEEPCARE MVP
 .venv/
+.venv-*/
 venv/
 node_modules/
 dist/
@@ -16,10 +17,15 @@ __pycache__/
 # GateKeeper (cloned from GitHub)
 /gatekeeper/
 
+# Weather y Reporting (forks CNTA, clonados en build-time)
+/weather/
+/reporting/
+
 # Installers / build artifacts
 installer/dist/
 installer/build/
 installer/pgsql/
+installer/mongodb/
 installer/assets/*.exe
 installer/docker-compose.yml
 installer/images/

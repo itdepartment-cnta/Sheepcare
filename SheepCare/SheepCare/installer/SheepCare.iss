@@ -47,8 +47,17 @@ Source: "dist\calendar\*"; DestDir: "{app}\calendar"; Flags: ignoreversion recur
 ; GateKeeper (carpeta con dependencias Python + Django)
 Source: "dist\gatekeeper\*"; DestDir: "{app}\gatekeeper"; Flags: ignoreversion recursesubdirs
 
+; Weather (OpenAgri Weather Service: tiempo y THI)
+Source: "dist\weather\*"; DestDir: "{app}\weather"; Flags: ignoreversion recursesubdirs
+
+; Reporting (OpenAgri Reporting Service: informes PDF)
+Source: "dist\reporting\*"; DestDir: "{app}\reporting"; Flags: ignoreversion recursesubdirs
+
 ; PostgreSQL portable
 Source: "pgsql\*"; DestDir: "{app}\pgsql"; Flags: ignoreversion recursesubdirs
+
+; MongoDB portable (solo mongod.exe y sus licencias): la cache de Weather
+Source: "mongodb\*"; DestDir: "{app}\mongodb"; Flags: ignoreversion recursesubdirs
 
 ; Icono
 Source: "assets\sheepcare.ico"; DestDir: "{app}\assets"; Flags: ignoreversion
@@ -62,6 +71,10 @@ Name: "{group}\Desinstalar {#AppName}"; Filename: "{uninstallexe}"
 Filename: "{app}\SheepCare.exe"; Description: "Iniciar SheepCare ahora"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
+; Los servicios nuevos se paran antes de borrar sus ficheros (se arrancan desacoplados)
+Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM sheepcare-weather.exe"; Flags: runhidden waituntilterminated; RunOnceId: "StopWeather"
+Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM sheepcare-reporting.exe"; Flags: runhidden waituntilterminated; RunOnceId: "StopReporting"
+Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM mongod.exe"; Flags: runhidden waituntilterminated; RunOnceId: "StopMongo"
 Filename: "{app}\pgsql\bin\pg_ctl.exe"; Parameters: "stop -D ""{userappdata}\SheepCare\pgdata"" -m fast"; Flags: runhidden waituntilterminated; RunOnceId: "StopPostgres"
 
 [UninstallDelete]
