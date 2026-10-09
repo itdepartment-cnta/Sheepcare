@@ -14,7 +14,7 @@ from unittest import mock
 from backend.data_access import sync_manager
 from backend.data_access.db_manager import DatabaseManager
 from backend.data_access.sync_manager import SyncService
-from backend.tests.test_milk_sync import FakeCloud
+from backend.tests.test_milk_sync import FakeCloud, simular_calendario
 
 FECHA = "2026-02-01T00:00:00+00:00"
 
@@ -30,6 +30,7 @@ class Base(unittest.TestCase):
         DatabaseManager._initialized = False
         self.db = DatabaseManager(os.path.join(self.dir.name, "t.db"))
         self.nube = FakeCloud()
+        simular_calendario(self)
         for nombre in ("get", "post"):
             p = mock.patch.object(sync_manager.requests, nombre, getattr(self.nube, nombre))
             p.start()

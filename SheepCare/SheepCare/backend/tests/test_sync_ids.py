@@ -11,7 +11,7 @@ from unittest import mock
 from backend.data_access import sync_manager
 from backend.data_access.db_manager import DatabaseManager
 from backend.data_access.sync_manager import SyncService
-from backend.tests.test_milk_sync import FakeCloud
+from backend.tests.test_milk_sync import FakeCloud, simular_calendario
 
 # Lo que acepta la nube (`X-Installation-Id`): 8-64 caracteres, letras, números, - y _
 FORMATO_NUBE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
@@ -33,6 +33,7 @@ class Base(unittest.TestCase):
         self.ruta = os.path.join(self.dir.name, "t.db")
         self.db = _abrir(self.ruta)
         self.nube = FakeCloud()
+        simular_calendario(self)
         for nombre in ("get", "post"):
             p = mock.patch.object(sync_manager.requests, nombre, getattr(self.nube, nombre))
             p.start()

@@ -16,6 +16,7 @@ import sqlite3
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 from ..data_access.db_manager import DatabaseManager
+from ..data_access import calendar_publisher
 
 logger = logging.getLogger(__name__)
 
@@ -428,6 +429,7 @@ class SyncService:
             data = resp.json()
             total_pulled = 0
             confirmed_ids = []  # (table, id) tuples to confirm
+            nuevas_subidas = []  # ("estrus"|"milk", id local) de subidas insertadas ahora
 
             # Process farms
             for farm in data.get("farms", []):
@@ -478,6 +480,7 @@ class SyncService:
                     continue
                 farm_id = self._resolve_cloud_farm_id(upload["farm_id"])
                 if farm_id:
+                    existia = self._existe_de_la_nube("uploads", upload["id"])
                     new_id = self._guardar(
                         "uploads", upload,
                         lambda: self._db.upsert_upload_from_cloud(
@@ -493,6 +496,8 @@ class SyncService:
                     if new_id:
                         confirmed_ids.append(("uploads", upload["id"]))
                         total_pulled += 1
+                        if not existia:
+                            nuevas_subidas.append(("estrus", new_id))
 
             # Process readings
             for reading in data.get("readings", []):
@@ -540,6 +545,7 @@ class SyncService:
                     continue
                 farm_id = self._resolve_cloud_farm_id(mu["farm_id"])
                 if farm_id:
+                    existia = self._existe_de_la_nube("milk_quality_uploads", mu["id"])
                     new_id = self._guardar(
                         "milk_quality_uploads", mu,
                         lambda: self._db.upsert_milk_upload_from_cloud(
@@ -555,6 +561,8 @@ class SyncService:
                     if new_id:
                         confirmed_ids.append(("milk_quality_uploads", mu["id"]))
                         total_pulled += 1
+                        if not existia:
+                            nuevas_subidas.append(("milk", new_id))
 
             # Process milk results (depend on milk uploads). Sin animales: la muestra
             # se identifica por su sample_id.
@@ -577,7 +585,19 @@ class SyncService:
                 self._confirm_sync(confirmed_ids)
 
             self._db.update_cloud_sync_time()
-            return {"success": True, "pulled_count": total_pulled}
+
+            # Lo recién bajado también va al Farm Calendar local, con su fecha
+            # original. Después de guardar y confirmar, y sin poder afectarlos.
+            publicadas = 0
+            try:
+                publicadas = calendar_publisher.publicar_nuevas(self._db, nuevas_subidas)
+            except Exception:  # noqa: BLE001
+                logger.exception("Pull: error publicando en el Farm Calendar local")
+            return {
+                "success": True,
+                "pulled_count": total_pulled,
+                "published_count": publicadas,
+            }
 
         except requests.RequestException as e:
             return {"success": False, "pulled_count": 0, "error": str(e)}
@@ -652,6 +672,14 @@ class SyncService:
                 tabla, item.get("id"), e,
             )
             return None
+
+    def _existe_de_la_nube(self, tabla: str, cloud_id: int) -> bool:
+        """¿Ya está guardado aquí este registro bajado de la nube?"""
+        cursor = self._db.connection.cursor()
+        cursor.execute(
+            f"SELECT 1 FROM {tabla} WHERE cloud_id = ? AND origin = 'cloud'", (cloud_id,)
+        )
+        return cursor.fetchone() is not None
 
     def _resolve_cloud_milk_upload_id(self, cloud_upload_id: int) -> Optional[int]:
         cursor = self._db.connection.cursor()

@@ -10,7 +10,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from backend.data_access import sync_manager
+from backend.data_access import calendar_publisher, sync_manager
 from backend.data_access.db_manager import DatabaseManager
 from backend.data_access.sync_manager import SyncService
 
@@ -23,6 +23,43 @@ class Resp:
 
     def json(self):
         return self._body
+
+
+class FakeCalendar:
+    """Farm Calendar local simulado. Las pruebas NO deben tocar uno real."""
+
+    def __init__(self):
+        self.estrus, self.milk, self.farms, self.parcels = [], [], [], []
+        self.fallar = False          # responde que no pudo publicar
+        self.explotar = False        # lanza una excepción de red
+
+    def sync_farm(self, name, location=""):
+        self.farms.append((name, location))
+        return f"urn:farm:{len(self.farms)}"
+
+    def sync_parcel(self, farm_uuid, identifier):
+        self.parcels.append((farm_uuid, identifier))
+        return f"urn:parcel:{len(self.parcels)}"
+
+    def _publicar(self, destino, kw):
+        destino.append(kw)
+        if self.explotar:
+            raise ConnectionError("Farm Calendar parado")
+        return not self.fallar
+
+    def post_estrus_detection(self, **kw):
+        return self._publicar(self.estrus, kw)
+
+    def post_milk_quality_detection(self, **kw):
+        return self._publicar(self.milk, kw)
+
+
+def simular_calendario(caso):
+    """Sustituye el cliente de Farm Calendar por uno simulado durante la prueba."""
+    caso.calendario = FakeCalendar()
+    p = mock.patch.object(calendar_publisher, "FarmCalendarClient", lambda: caso.calendario)
+    p.start()
+    caso.addCleanup(p.stop)
 
 
 class FakeCloud:
@@ -90,6 +127,7 @@ class SyncLeche(unittest.TestCase):
         self.addCleanup(self._cerrar)
         self.db = _nuevo_gestor(os.path.join(self.dir.name, "t.db"))
         self.nube = FakeCloud()
+        simular_calendario(self)
         for objetivo, nombre in ((sync_manager.requests, "get"), (sync_manager.requests, "post")):
             p = mock.patch.object(objetivo, nombre, getattr(self.nube, nombre))
             p.start()
