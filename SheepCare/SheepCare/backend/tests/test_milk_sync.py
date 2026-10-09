@@ -28,6 +28,7 @@ class Resp:
 class FakeCloud:
     def __init__(self):
         self.pushes = []          # payloads recibidos, en orden
+        self.headers = []         # (operación, cabeceras) de las llamadas de sync
         self.confirms = []        # (tabla, ids)
         self.pull_data = {}
         self.omit = set()         # (tabla, origin_id) que la nube se niega a guardar
@@ -41,6 +42,7 @@ class FakeCloud:
         if url.endswith("/api/auth/me"):
             return Resp(200, {"id": 1})
         if url.endswith("/api/sync/pull"):
+            self.headers.append(("pull", dict(headers or {})))
             return Resp(200, self.pull_data)
         return Resp(404)
 
@@ -48,9 +50,11 @@ class FakeCloud:
         if url.endswith("/gatekeeper/api/login/"):
             return Resp(200, {"access": "tok"})
         if url.endswith("/api/sync/confirm-sync"):
+            self.headers.append(("confirm", dict(headers or {})))
             self.confirms.append((params["table"], json["record_ids"]))
             return Resp(200, {"success": True})
         if url.endswith("/api/sync/push"):
+            self.headers.append(("push", dict(headers or {})))
             self.pushes.append(json)
             if self.unauthorized_once:
                 self.unauthorized_once = False

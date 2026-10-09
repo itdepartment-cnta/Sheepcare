@@ -5,6 +5,7 @@ Extended schema for SHEEPCARE v2: farms, uploads, animal_readings, detection_res
 
 import sqlite3
 import os
+import uuid
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Tuple
 
@@ -633,7 +634,8 @@ class DatabaseManager:
     def get_unsynced_results(self) -> List[Dict[str, Any]]:
         cursor = self.connection.cursor()
         cursor.execute("""
-            SELECT dr.*, a.external_tag as animal_tag, f.name as farm_name
+            SELECT dr.*, a.external_tag as animal_tag, f.name as farm_name,
+                   a.cloud_id AS animal_cloud_id, u.cloud_id AS upload_cloud_id
             FROM detection_results dr
             JOIN animals a ON dr.animal_id = a.id
             JOIN uploads u ON dr.upload_id = u.id
@@ -686,6 +688,21 @@ class DatabaseManager:
             (key, value),
         )
         self.connection.commit()
+
+    def get_installation_id(self, email: str) -> str:
+        """Identificador de ESTA instalación para esa persona (`X-Installation-Id`).
+
+        Se genera una vez y se guarda en la propia base: sobrevive a reinicios y a
+        reinstalaciones (la base está fuera de la carpeta de la aplicación). Es uno
+        por persona: si en el mismo equipo entra otra, necesita el suyo, porque la
+        nube asocia cada identificador a una sola persona.
+        """
+        clave = "installation_id:" + (email or "").strip().lower()
+        valor = self.get_setting(clave)
+        if not valor:
+            valor = str(uuid.uuid4())
+            self.set_setting(clave, valor)
+        return valor
 
     def delete_setting(self, key: str) -> None:
         cursor = self.connection.cursor()
@@ -768,7 +785,9 @@ class DatabaseManager:
     def get_unsynced_animals_to_cloud(self) -> List[Dict[str, Any]]:
         cursor = self.connection.cursor()
         cursor.execute("""
-            SELECT a.* FROM animals a
+            SELECT a.*, f.cloud_id AS farm_cloud_id
+            FROM animals a
+            JOIN farms f ON f.id = a.farm_id
             WHERE (a.origin = 'edge' AND (a.cloud_id IS NULL OR a.synced_at IS NULL))
                OR a.origin IS NULL
             ORDER BY a.id
@@ -778,7 +797,9 @@ class DatabaseManager:
     def get_unsynced_uploads_to_cloud(self) -> List[Dict[str, Any]]:
         cursor = self.connection.cursor()
         cursor.execute("""
-            SELECT u.* FROM uploads u
+            SELECT u.*, f.cloud_id AS farm_cloud_id
+            FROM uploads u
+            JOIN farms f ON f.id = u.farm_id
             WHERE (u.origin = 'edge' AND (u.cloud_id IS NULL OR u.synced_at IS NULL))
                OR u.origin IS NULL
             ORDER BY u.id
@@ -788,7 +809,9 @@ class DatabaseManager:
     def get_unsynced_readings_to_cloud(self) -> List[Dict[str, Any]]:
         cursor = self.connection.cursor()
         cursor.execute("""
-            SELECT r.* FROM animal_readings r
+            SELECT r.*, a.cloud_id AS animal_cloud_id
+            FROM animal_readings r
+            JOIN animals a ON a.id = r.animal_id
             WHERE (r.origin = 'edge' AND (r.cloud_id IS NULL OR r.synced_at IS NULL))
                OR r.origin IS NULL
             ORDER BY r.id

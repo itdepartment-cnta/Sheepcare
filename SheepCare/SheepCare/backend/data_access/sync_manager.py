@@ -12,6 +12,7 @@ Cloud returns JWT tokens for authentication.
 
 import requests
 import logging
+import sqlite3
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 from ..data_access.db_manager import DatabaseManager
@@ -35,6 +36,11 @@ def _fecha_o_none(valor: Optional[str]) -> Optional[str]:
     except ValueError:
         return None
     return texto
+
+
+def _sin_ids_vacios(item: Dict[str, Any]) -> Dict[str, Any]:
+    """Quita los `*_cloud_id` que no existen: la nube los trata como «no indicado»."""
+    return {k: v for k, v in item.items() if not (k.endswith("_cloud_id") and v is None)}
 
 
 class SyncService:
@@ -139,6 +145,11 @@ class SyncService:
         headers = {"Content-Type": "application/json"}
         if token:
             headers["Authorization"] = f"Bearer {token}"
+        if self.email:
+            # Distingue esta instalación: dos equipos de la misma persona, o una
+            # reinstalación, empiezan los dos en «granja 1, animal 1…» y sin esto
+            # se pisarían en la nube.
+            headers["X-Installation-Id"] = self._db.get_installation_id(self.email)
         return headers
 
     # ------------------------------------------------------------------
@@ -220,6 +231,7 @@ class SyncService:
                 {
                     "origin_id": a["id"],
                     "farm_origin_id": a["farm_id"],
+                    "farm_cloud_id": a["farm_cloud_id"],
                     "external_tag": a["external_tag"],
                     "name": a["name"],
                     "created_at": a["created_at"],
@@ -230,6 +242,7 @@ class SyncService:
                 {
                     "origin_id": r["id"],
                     "animal_origin_id": r["animal_id"],
+                    "animal_cloud_id": r["animal_cloud_id"],
                     "reading_date": _fecha_o_none(r["reading_date"]),
                     "value": r["value"],
                     "source_file": r.get("source_file", ""),
@@ -240,6 +253,7 @@ class SyncService:
                 {
                     "origin_id": u["id"],
                     "farm_origin_id": u["farm_id"],
+                    "farm_cloud_id": u["farm_cloud_id"],
                     "filename": u["filename"],
                     "upload_date": u["upload_date"],
                     "total_animals": u["total_animals"],
@@ -252,7 +266,9 @@ class SyncService:
                 {
                     "origin_id": r["id"],
                     "animal_origin_id": r["animal_id"],
+                    "animal_cloud_id": r["animal_cloud_id"],
                     "upload_origin_id": r["upload_id"],
+                    "upload_cloud_id": r["upload_cloud_id"],
                     "result": r["result"],
                     "confidence": r["confidence"],
                     "probability": r["probability"],
@@ -276,11 +292,9 @@ class SyncService:
             ],
         }
 
-        # Remove empty lists
-        payload = {k: v for k, v in payload.items() if v}
-        for u in payload.get("milk_uploads", []):
-            if u["farm_cloud_id"] is None:
-                del u["farm_cloud_id"]  # granja nueva: la nube la resuelve en esta misma petición
+        # Remove empty lists. Un `*_cloud_id` solo viaja si el padre ya existe en la
+        # nube; si es nuevo, la nube lo resuelve con el mapeo de esta misma petición.
+        payload = {k: [_sin_ids_vacios(x) for x in v] for k, v in payload.items() if v}
 
         # Primero todo salvo los resultados de leche, y después estos por lotes: sus
         # subidas ya existen en la nube (o se omiten con su motivo).
@@ -309,16 +323,14 @@ class SyncService:
 
     @staticmethod
     def _milk_result_payload(r: Dict[str, Any]) -> Dict[str, Any]:
-        item = {
+        return _sin_ids_vacios({
             "origin_id": r["id"],
             "upload_origin_id": r["upload_id"],
+            "upload_cloud_id": r.get("upload_cloud_id"),
             "sample_id": r["sample_id"],
             "result": r["result"],
             "created_at": r["created_at"],
-        }
-        if r.get("upload_cloud_id") is not None:
-            item["upload_cloud_id"] = r["upload_cloud_id"]
-        return item
+        })
 
     def _post_push(self, payload: dict) -> Dict[str, Any]:
         """POST /api/sync/push. Un 401 renueva el token UNA vez y repite."""
@@ -419,13 +431,19 @@ class SyncService:
 
             # Process farms
             for farm in data.get("farms", []):
-                new_id = self._db.upsert_farm_from_cloud(
-                    farm["id"],
-                    farm["name"],
-                    farm.get("location", ""),
-                    farm["created_at"],
-                    farm.get("latitude"),
-                    farm.get("longitude"),
+                if self._reconocer_propio("farms", farm):
+                    confirmed_ids.append(("farms", farm["id"]))
+                    continue
+                new_id = self._guardar(
+                    "farms", farm,
+                    lambda: self._db.upsert_farm_from_cloud(
+                        farm["id"],
+                        farm["name"],
+                        farm.get("location", ""),
+                        farm["created_at"],
+                        farm.get("latitude"),
+                        farm.get("longitude"),
+                    ),
                 )
                 if new_id:
                     confirmed_ids.append(("farms", farm["id"]))
@@ -433,15 +451,21 @@ class SyncService:
 
             # Process animals
             for animal in data.get("animals", []):
+                if self._reconocer_propio("animals", animal):
+                    confirmed_ids.append(("animals", animal["id"]))
+                    continue
                 # Find the local farm_id matching the cloud farm's cloud_id
                 farm_id = self._resolve_cloud_farm_id(animal["farm_id"])
                 if farm_id:
-                    new_id = self._db.upsert_animal_from_cloud(
-                        farm_id,
-                        animal["id"],
-                        animal["external_tag"],
-                        animal["name"],
-                        animal["created_at"],
+                    new_id = self._guardar(
+                        "animals", animal,
+                        lambda: self._db.upsert_animal_from_cloud(
+                            farm_id,
+                            animal["id"],
+                            animal["external_tag"],
+                            animal["name"],
+                            animal["created_at"],
+                        ),
                     )
                     if new_id:
                         confirmed_ids.append(("animals", animal["id"]))
@@ -449,16 +473,22 @@ class SyncService:
 
             # Process uploads
             for upload in data.get("uploads", []):
+                if self._reconocer_propio("uploads", upload):
+                    confirmed_ids.append(("uploads", upload["id"]))
+                    continue
                 farm_id = self._resolve_cloud_farm_id(upload["farm_id"])
                 if farm_id:
-                    new_id = self._db.upsert_upload_from_cloud(
-                        farm_id,
-                        upload["id"],
-                        upload["filename"],
-                        upload["upload_date"],
-                        upload["total_animals"],
-                        upload["celo_count"],
-                        upload["no_celo_count"],
+                    new_id = self._guardar(
+                        "uploads", upload,
+                        lambda: self._db.upsert_upload_from_cloud(
+                            farm_id,
+                            upload["id"],
+                            upload["filename"],
+                            upload["upload_date"],
+                            upload["total_animals"],
+                            upload["celo_count"],
+                            upload["no_celo_count"],
+                        ),
                     )
                     if new_id:
                         confirmed_ids.append(("uploads", upload["id"]))
@@ -505,16 +535,22 @@ class SyncService:
 
             # Process milk uploads (depend on farms)
             for mu in data.get("milk_uploads", []):
+                if self._reconocer_propio("milk_quality_uploads", mu):
+                    confirmed_ids.append(("milk_quality_uploads", mu["id"]))
+                    continue
                 farm_id = self._resolve_cloud_farm_id(mu["farm_id"])
                 if farm_id:
-                    new_id = self._db.upsert_milk_upload_from_cloud(
-                        farm_id,
-                        mu["id"],
-                        mu["filename"],
-                        mu["upload_date"],
-                        mu.get("total_samples", 0),
-                        mu.get("lower_count", 0),
-                        mu.get("upper_count", 0),
+                    new_id = self._guardar(
+                        "milk_quality_uploads", mu,
+                        lambda: self._db.upsert_milk_upload_from_cloud(
+                            farm_id,
+                            mu["id"],
+                            mu["filename"],
+                            mu["upload_date"],
+                            mu.get("total_samples", 0),
+                            mu.get("lower_count", 0),
+                            mu.get("upper_count", 0),
+                        ),
                     )
                     if new_id:
                         confirmed_ids.append(("milk_quality_uploads", mu["id"]))
@@ -567,6 +603,55 @@ class SyncService:
         cursor.execute("SELECT id FROM uploads WHERE cloud_id = ?", (cloud_upload_id,))
         row = cursor.fetchone()
         return row["id"] if row else None
+
+    # Tablas cuyas filas pueden volver al Edge que las creó, como padre de algo nuevo
+    _TABLAS_PADRE = {"farms", "animals", "uploads", "milk_quality_uploads"}
+
+    def _reconocer_propio(self, tabla: str, item: Dict[str, Any]) -> bool:
+        """¿Es este registro algo que creó ESTA instalación y que vuelve como padre?
+
+        La nube devuelve un padre cuando alguien (la web, otro equipo, otra
+        persona con la granja compartida) le ha colgado algo nuevo. Si lo creó
+        este Edge llega con `origin: "edge"` y su `origin_id` (el id local), para
+        que lo reconozca en lugar de insertarlo otra vez: sin esto una granja se
+        duplicaba y un animal rompía el pull con un UNIQUE.
+
+        Si existe, se enlaza con su id de la nube (sin tocar nada más) y no se
+        vuelve a crear. Si ya no existe en local, se trata como un registro nuevo.
+        """
+        if tabla not in self._TABLAS_PADRE:
+            return False
+        if item.get("origin") != "edge" or not item.get("origin_id"):
+            return False
+        cursor = self._db.connection.cursor()
+        cursor.execute(f"SELECT id FROM {tabla} WHERE id = ?", (item["origin_id"],))
+        if cursor.fetchone() is None:
+            return False
+        cursor.execute(
+            f"UPDATE {tabla} SET cloud_id = COALESCE(cloud_id, ?), "
+            "synced_at = COALESCE(synced_at, datetime('now')) WHERE id = ?",
+            (item["id"], item["origin_id"]),
+        )
+        self._db.connection.commit()
+        return True
+
+    @staticmethod
+    def _guardar(tabla: str, item: Dict[str, Any], accion) -> Optional[int]:
+        """Guarda un registro de la nube; si choca con algo local, lo omite.
+
+        Un registro que no se puede guardar (p. ej. un animal con la misma etiqueta
+        que otro ya creado aquí) no debe tumbar el pull entero: se omite, no se
+        confirma y se avisa. Antes la excepción cortaba el pull y, como la
+        sincronización automática lo reintenta, se repetía para siempre.
+        """
+        try:
+            return accion()
+        except sqlite3.IntegrityError as e:
+            logger.warning(
+                "Pull: se omite %s %s de la nube, choca con un dato local: %s",
+                tabla, item.get("id"), e,
+            )
+            return None
 
     def _resolve_cloud_milk_upload_id(self, cloud_upload_id: int) -> Optional[int]:
         cursor = self._db.connection.cursor()
