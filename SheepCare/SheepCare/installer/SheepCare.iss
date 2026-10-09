@@ -71,11 +71,69 @@ Name: "{group}\Desinstalar {#AppName}"; Filename: "{uninstallexe}"
 Filename: "{app}\SheepCare.exe"; Description: "Iniciar SheepCare ahora"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
-; Los servicios nuevos se paran antes de borrar sus ficheros (se arrancan desacoplados)
+; Todos los servicios se arrancan desacoplados del lanzador y siguen vivos al cerrar su ventana:
+; se paran antes de borrar sus ficheros. PostgreSQL el ultimo, y de forma limpia.
+Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM SheepCare.exe"; Flags: runhidden waituntilterminated; RunOnceId: "StopLauncher"
+Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM sheepcare-backend.exe"; Flags: runhidden waituntilterminated; RunOnceId: "StopBackend"
 Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM sheepcare-weather.exe"; Flags: runhidden waituntilterminated; RunOnceId: "StopWeather"
 Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM sheepcare-reporting.exe"; Flags: runhidden waituntilterminated; RunOnceId: "StopReporting"
-Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM mongod.exe"; Flags: runhidden waituntilterminated; RunOnceId: "StopMongo"
+Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM sheepcare-calendar.exe"; Flags: runhidden waituntilterminated; RunOnceId: "StopCalendar"
+Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM sheepcare-gatekeeper.exe"; Flags: runhidden waituntilterminated; RunOnceId: "StopGatekeeper"
+; mongod: solo el NUESTRO (el de {app}). Por nombre se llevaria por delante el MongoDB propio del equipo,
+; por eso el lanzador usa el puerto 27018. Las llaves se duplican: en este fichero {{ abre una constante.
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""Get-CimInstance Win32_Process | Where-Object {{ $_.Name -eq 'mongod.exe' -and $_.ExecutablePath -like '{app}\mongodb\*' }} | ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force }}"""; Flags: runhidden waituntilterminated; RunOnceId: "StopMongo"
 Filename: "{app}\pgsql\bin\pg_ctl.exe"; Parameters: "stop -D ""{userappdata}\SheepCare\pgdata"" -m fast"; Flags: runhidden waituntilterminated; RunOnceId: "StopPostgres"
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
+
+[Code]
+{ Los servicios de SheepCare se arrancan desacoplados del lanzador y siguen vivos tras cerrar su
+  ventana. Al ACTUALIZAR hay que pararlos antes de copiar ficheros: si no, Windows no deja sustituir
+  sus ejecutables y, peor, el lanzador ve el puerto 8000 ocupado ("SheepCare ya esta activo") y
+  reutiliza el backend VIEJO que sigue en memoria, sin las migraciones ni la sincronizacion nuevas. }
+
+procedure PararProceso(const Imagen: String);
+var
+  Codigo: Integer;
+begin
+  { taskkill devuelve 128 si no hay ningun proceso con ese nombre: no es un error }
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM ' + Imagen, '', SW_HIDE, ewWaitUntilTerminated, Codigo);
+end;
+
+procedure PararMongoDeSheepCare;
+var
+  Codigo: Integer;
+begin
+  { Solo el mongod de la carpeta de instalacion: el equipo puede tener su propio MongoDB, que no se toca }
+  Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+    '-NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq ''mongod.exe'' -and $_.ExecutablePath -like ''' +
+    ExpandConstant('{app}') + '\mongodb\*'' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"',
+    '', SW_HIDE, ewWaitUntilTerminated, Codigo);
+end;
+
+procedure PararServiciosDeSheepCare;
+var
+  Codigo: Integer;
+  PgCtl: String;
+begin
+  PararProceso('SheepCare.exe');
+  PararProceso('sheepcare-backend.exe');
+  PararProceso('sheepcare-reporting.exe');
+  PararProceso('sheepcare-weather.exe');
+  PararProceso('sheepcare-calendar.exe');
+  PararProceso('sheepcare-gatekeeper.exe');
+  PararMongoDeSheepCare;
+  { PostgreSQL se para limpiamente: guarda los datos de GateKeeper y de Farm Calendar }
+  PgCtl := ExpandConstant('{app}\pgsql\bin\pg_ctl.exe');
+  if FileExists(PgCtl) then
+    Exec(PgCtl, ExpandConstant('stop -D "{userappdata}\SheepCare\pgdata" -m fast'), '', SW_HIDE, ewWaitUntilTerminated, Codigo);
+  { Un respiro para que Windows libere los ficheros }
+  Sleep(1500);
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  PararServiciosDeSheepCare;
+  Result := '';
+end;
