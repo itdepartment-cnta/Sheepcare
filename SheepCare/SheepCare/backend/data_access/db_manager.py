@@ -1015,6 +1015,27 @@ class DatabaseManager:
         cursor.execute("UPDATE farms SET cloud_access = ? WHERE cloud_id = ?", (access, cloud_id))
         self.connection.commit()
 
+    def mark_farm_visible(self, cloud_id: int, access: Optional[str] = None) -> bool:
+        """Una granja ya enlazada vuelve a ser visible (se volvió a compartir).
+
+        Para las que creó este mismo Edge, que `upsert_farm_from_cloud` no toca porque
+        el pull las reconoce como propias. Reactiva, guarda el acceso y libera lo
+        apartado. Devuelve si existe la granja.
+        """
+        cursor = self.connection.cursor()
+        cursor.execute("SELECT id, hidden FROM farms WHERE cloud_id = ?", (cloud_id,))
+        row = cursor.fetchone()
+        if row is None:
+            return False
+        cursor.execute(
+            "UPDATE farms SET hidden = 0, cloud_access = COALESCE(?, cloud_access) WHERE id = ?",
+            (access or None, row["id"]),
+        )
+        self.connection.commit()
+        if row["hidden"]:
+            self.unblock_farm_data(row["id"])
+        return True
+
     def hide_farms_by_cloud_id(self, cloud_ids: List[int]) -> int:
         """Oculta (no borra) las granjas que la persona ya no ve en la nube.
 

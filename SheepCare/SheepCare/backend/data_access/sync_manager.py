@@ -44,6 +44,11 @@ def _sin_ids_vacios(item: Dict[str, Any]) -> Dict[str, Any]:
     return {k: v for k, v in item.items() if not (k.endswith("_cloud_id") and v is None)}
 
 
+# Fragmento del motivo con el que la nube omite lo que la persona no puede escribir
+# (api/sync.py del backend privado: «sin permiso sobre la granja…»).
+_SIN_PERMISO = "sin permiso"
+
+
 class SyncService:
     """
     Handles bidirectional sync between the local Edge database
@@ -306,13 +311,18 @@ class SyncService:
 
         synced_count = 0
         omitidos: List[dict] = []
+        apartados = 0
         for lote in lotes:
             res = self._post_push(lote)
             if not res["ok"]:
                 self._db.log_sync("error", res["error"])
                 return {"success": False, "synced_count": synced_count, "error": res["error"]}
             synced_count += self._apply_mappings(res["mappings"])
-            omitidos.extend(res["errors"])
+            for error in res["errors"]:
+                if self._apartar_si_sin_permiso(error):
+                    apartados += 1
+                else:
+                    omitidos.append(error)
 
         self._db.update_cloud_sync_time()
         self._db.log_sync("success")
@@ -320,7 +330,26 @@ class SyncService:
         if omitidos:
             # No se marcan como sincronizados: se reintentan en la próxima vuelta
             out["errors"] = omitidos
+        if apartados:
+            # Rechazados por falta de permiso: no se reintentan (ver sync_blocked)
+            out["blocked_count"] = apartados
         return out
+
+    def _apartar_si_sin_permiso(self, error: Dict[str, Any]) -> bool:
+        """Aparta un registro que la nube rechazó por falta de permiso.
+
+        Reintentarlo no lo arregla: o la persona perdió la granja (y entonces llega
+        en `removed`) o no tiene derecho a escribir en ella. Se guarda en
+        `sync_blocked` y deja de enviarse; el dato local no se toca. Los demás
+        errores se siguen reintentando. Devuelve si lo apartó.
+        """
+        detalle = str(error.get("detail") or "")
+        if _SIN_PERMISO not in detalle.lower():
+            return False
+        tabla, origin_id = error.get("table"), error.get("origin_id")
+        if not tabla or origin_id is None:
+            return False
+        return self._db.block_record(tabla, origin_id, detalle)
 
     @staticmethod
     def _milk_result_payload(r: Dict[str, Any]) -> Dict[str, Any]:
@@ -431,9 +460,25 @@ class SyncService:
             confirmed_ids = []  # (table, id) tuples to confirm
             nuevas_subidas = []  # ("estrus"|"milk", id local) de subidas insertadas ahora
 
+            # Granjas que la persona ya no ve (se dejó de compartir, cambió la
+            # propietaria o se borró). Se OCULTAN, no se borran: lo ya descargado no se
+            # puede «des-entregar», y si vuelve a compartirse baja otra vez con su
+            # historial. Se confirma también lo que aquí no existe: mientras no se
+            # confirme, la nube lo repite en cada pull.
+            quitadas = [
+                r["cloud_id"] for r in data.get("removed", [])
+                if r.get("table") == "farms" and r.get("cloud_id") is not None
+            ]
+            if quitadas:
+                self._db.hide_farms_by_cloud_id(quitadas)
+                confirmed_ids.extend(("removed", cid) for cid in quitadas)
+
             # Process farms
             for farm in data.get("farms", []):
                 if self._reconocer_propio("farms", farm):
+                    # Granja creada por este Edge que vuelve como padre: si estaba
+                    # oculta y se ha vuelto a compartir, se reactiva.
+                    self._db.mark_farm_visible(farm["id"], farm.get("access"))
                     confirmed_ids.append(("farms", farm["id"]))
                     continue
                 new_id = self._guardar(
@@ -445,6 +490,7 @@ class SyncService:
                         farm["created_at"],
                         farm.get("latitude"),
                         farm.get("longitude"),
+                        farm.get("access"),
                     ),
                 )
                 if new_id:
@@ -600,6 +646,7 @@ class SyncService:
                 "success": True,
                 "pulled_count": total_pulled,
                 "published_count": publicadas,
+                "removed_count": len(quitadas),
             }
 
         except requests.RequestException as e:
