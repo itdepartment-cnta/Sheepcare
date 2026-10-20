@@ -29,7 +29,7 @@ const KIND_LABELS: Record<Kind, string> = {
 
 // El modelo de calidad de leche devuelve "Lower"/"Upper"; se muestran en
 // español sin tocar el valor real que guarda/filtra el backend.
-const MILK_QUALITY_LABELS: Record<string, string> = { Lower: 'Buena', Upper: 'Mala' };
+const MILK_QUALITY_LABELS: Record<string, string> = { Lower: 'Alta', Upper: 'Media' };
 
 function displayResult(r: UnifiedRow): string {
     return r.kind === 'milk_quality' ? (MILK_QUALITY_LABELS[r.result] ?? r.result) : r.result;
@@ -111,12 +111,12 @@ export default function HistoryView() {
     };
 
     const resultOptions = typeFilter === 'milk_quality'
-        ? [{ value: 'Lower', label: 'Buena' }, { value: 'Upper', label: 'Mala' }]
+        ? [{ value: 'Lower', label: 'Alta' }, { value: 'Upper', label: 'Media' }]
         : typeFilter === 'celo'
             ? [{ value: 'Celo', label: 'Celo' }, { value: 'No celo', label: 'No celo' }]
             : [
                 { value: 'Celo', label: 'Celo' }, { value: 'No celo', label: 'No celo' },
-                { value: 'Lower', label: 'Buena' }, { value: 'Upper', label: 'Mala' },
+                { value: 'Lower', label: 'Alta' }, { value: 'Upper', label: 'Media' },
             ];
 
     const hayFiltros = farmFilter !== '' || typeFilter !== '' || resultFilter !== '';
@@ -148,7 +148,7 @@ export default function HistoryView() {
                 farms={farms}
                 id="informe-leche"
                 titulo="Informe de calidad de leche (PDF)"
-                descripcion="Resumen de la calidad de leche (SCC) de una granja: muestras con calidad mala, gráfica por subida y detalle."
+                descripcion="Resumen de la calidad de leche (SCC) de una granja: muestras con calidad media, gráfica por subida y detalle."
                 descargar={reportsApi.milkQualityPdf}
             />
 

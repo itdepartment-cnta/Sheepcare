@@ -263,8 +263,8 @@ class FarmCalendarClient:
 
         Args:
             farm_name: Name of the farm
-            buena_count: Number of samples classified as good quality (Lower)
-            mala_count: Number of samples classified as poor quality (Upper)
+            buena_count: Number of samples with high quality (Lower, < 500000 SCC)
+            mala_count: Number of samples with medium quality (Upper, > 500000 SCC)
             filename: Original uploaded file name
             upload_date: ISO datetime string (defaults to now)
             details_text: Optional detailed description
@@ -280,10 +280,10 @@ class FarmCalendarClient:
 
         if not details_text:
             summary_parts = []
-            if buena_count > 0:
-                summary_parts.append(f"🟢 Buena: {buena_count}")
             if mala_count > 0:
-                summary_parts.append(f"🔴 Mala: {mala_count}")
+                summary_parts.append(f"🟠 Calidad media: {mala_count}")
+            if buena_count > 0:
+                summary_parts.append(f"🟢 Calidad alta: {buena_count}")
 
             # Build per-sample list
             if sample_details:
@@ -292,13 +292,13 @@ class FarmCalendarClient:
                 lines = [f"Archivo: {filename}"]
                 lines.extend(summary_parts)
                 lines.append("")
-                if buena_samples:
-                    lines.append("🟢 BUENA:")
-                    for s in buena_samples:
-                        lines.append(f"  {s['animal_id']}")
                 if mala_samples:
-                    lines.append("🔴 MALA:")
+                    lines.append("🟠 CALIDAD MEDIA:")
                     for s in mala_samples:
+                        lines.append(f"  {s['animal_id']}")
+                if buena_samples:
+                    lines.append("🟢 CALIDAD ALTA:")
+                    for s in buena_samples:
                         lines.append(f"  {s['animal_id']}")
                 details_text = "\n".join(lines)
             else:
@@ -316,7 +316,7 @@ class FarmCalendarClient:
             "hasResult": {
                 "@type": "QuantityValue",
                 "unit": "count",
-                "hasValue": f"Buena: {buena_count}, Mala: {mala_count}",
+                "hasValue": f"Calidad media: {mala_count}, Calidad alta: {buena_count}",
             },
             "madeBySensor": {
                 "@type": "Sensor",

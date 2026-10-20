@@ -10,7 +10,7 @@ import {
 } from './ui';
 
 // El modelo devuelve «Lower»/«Upper»; se muestran en español sin tocar el valor real.
-const MILK_QUALITY_LABELS: Record<string, string> = { Lower: 'Buena', Upper: 'Mala' };
+const MILK_QUALITY_LABELS: Record<string, string> = { Lower: 'Alta', Upper: 'Media' };
 
 const nombreGranja = (f: Farm) => (f.location ? `${f.name} · ${f.location}` : f.name);
 
@@ -69,7 +69,7 @@ export default function MilkQualityUploadCard({ farms }: { farms: Farm[] }) {
             const data = await milkQualityApi.upload(file, Number(selectedFarm));
             setResult(data);
             setFile(null);
-            avisar.ok('Análisis completado', `${numero(data.total_samples)} muestras analizadas, ${numero(data.upper_count)} de calidad mala.`);
+            avisar.ok('Análisis completado', `${numero(data.total_samples)} muestras analizadas, ${numero(data.upper_count)} de calidad media.`);
         } catch (err) {
             setErrorServidor(mensajeDeError(err, 'No se pudo analizar el archivo. Comprueba su formato e inténtalo de nuevo.'));
         } finally {
@@ -128,8 +128,8 @@ export default function MilkQualityUploadCard({ farms }: { farms: Farm[] }) {
                     />
                     <div className="grid grid-cols-3 gap-4">
                         <Stat size="md" value={numero(result.total_samples)} label="Muestras" />
-                        <Stat size="md" value={numero(result.lower_count)} label="Calidad buena" />
-                        <Stat size="md" tone="danger" value={numero(result.upper_count)} label="Calidad mala" />
+                        <Stat size="md" value={numero(result.lower_count)} label="Calidad alta" info="Menos de 500000 células somáticas" />
+                        <Stat size="md" tone="danger" value={numero(result.upper_count)} label="Calidad media" info="Más de 500000 células somáticas" />
                     </div>
 
                     <h3 className="mb-2 mt-6 text-micro font-medium uppercase tracking-[0.1em] text-ink-3">Resultado por muestra</h3>
