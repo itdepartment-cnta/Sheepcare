@@ -1,4 +1,4 @@
-# SHEEPCARE - OpenAgri GateKeeper setup script
+﻿# SHEEPCARE - OpenAgri GateKeeper setup script
 # Clones and configures the GateKeeper auth/proxy service from GitHub.
 
 $repoUrl = "https://github.com/agstack/OpenAgri-GateKeeper.git"

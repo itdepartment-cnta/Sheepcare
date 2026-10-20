@@ -1,4 +1,4 @@
-# ============================================================================
+﻿# ============================================================================
 # SheepCare — Test rápido del bundle (sin Inno Setup, sin instalador)
 # Prueba los exes compilados directamente desde installer/dist/
 #
