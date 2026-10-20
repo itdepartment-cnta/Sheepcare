@@ -72,6 +72,17 @@ class DatabaseManager:
                 created_at  DATETIME NOT NULL DEFAULT (datetime('now'))
             );
 
+            -- Registros que la nube rechazó por falta de permiso. No se vuelven a
+            -- enviar (ver get_unsynced_*): reintentarlos no los arregla. `table_name`
+            -- es el nombre que usa la nube en sus errores y mapeos.
+            CREATE TABLE IF NOT EXISTS sync_blocked (
+                table_name TEXT NOT NULL,
+                origin_id  INTEGER NOT NULL,
+                reason     TEXT NOT NULL DEFAULT '',
+                blocked_at DATETIME NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (table_name, origin_id)
+            );
+
             CREATE TABLE IF NOT EXISTS animals (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
                 farm_id      INTEGER NOT NULL,
@@ -194,6 +205,12 @@ class DatabaseManager:
             ("farms", "synced_at", "DATETIME", "NULL"),
             ("farms", "latitude", "REAL", "NULL"),
             ("farms", "longitude", "REAL", "NULL"),
+            # Relación de la persona con la granja según la nube: owner, shared o
+            # admin. NULL en una granja solo local.
+            ("farms", "cloud_access", "TEXT", "NULL"),
+            # 1 = la persona ya no ve esta granja en la nube (se dejó de compartir,
+            # cambió la propietaria o se borró). Se oculta, no se borra.
+            ("farms", "hidden", "INTEGER", "0"),
             ("animals", "origin", "TEXT", "'edge'"),
             ("animals", "cloud_id", "INTEGER", "NULL"),
             ("animals", "synced_at", "DATETIME", "NULL"),
@@ -244,15 +261,20 @@ class DatabaseManager:
         self.connection.commit()
         return cursor.lastrowid
 
-    def get_farm(self, farm_id: int) -> Optional[Dict[str, Any]]:
+    def get_farm(self, farm_id: int, include_hidden: bool = False) -> Optional[Dict[str, Any]]:
         cursor = self.connection.cursor()
-        cursor.execute("SELECT * FROM farms WHERE id = ?", (farm_id,))
+        cursor.execute(
+            "SELECT * FROM farms WHERE id = ?" + ("" if include_hidden else " AND hidden = 0"),
+            (farm_id,),
+        )
         row = cursor.fetchone()
         return dict(row) if row else None
 
-    def list_farms(self) -> List[Dict[str, Any]]:
+    def list_farms(self, include_hidden: bool = False) -> List[Dict[str, Any]]:
         cursor = self.connection.cursor()
-        cursor.execute("SELECT * FROM farms ORDER BY name")
+        cursor.execute(
+            "SELECT * FROM farms" + ("" if include_hidden else " WHERE hidden = 0") + " ORDER BY name"
+        )
         return [dict(row) for row in cursor.fetchall()]
 
     def update_farm(
@@ -315,7 +337,11 @@ class DatabaseManager:
 
     def get_animal(self, animal_id: int) -> Optional[Dict[str, Any]]:
         cursor = self.connection.cursor()
-        cursor.execute("SELECT * FROM animals WHERE id = ?", (animal_id,))
+        cursor.execute(
+            "SELECT * FROM animals WHERE id = ? "
+            "AND farm_id NOT IN (SELECT id FROM farms WHERE hidden = 1)",
+            (animal_id,),
+        )
         row = cursor.fetchone()
         return dict(row) if row else None
 
@@ -332,12 +358,12 @@ class DatabaseManager:
         cursor = self.connection.cursor()
         if farm_id:
             cursor.execute(
-                "SELECT a.*, f.name as farm_name FROM animals a JOIN farms f ON a.farm_id = f.id WHERE a.farm_id = ? ORDER BY a.external_tag",
+                "SELECT a.*, f.name as farm_name FROM animals a JOIN farms f ON a.farm_id = f.id AND f.hidden = 0 WHERE a.farm_id = ? ORDER BY a.external_tag",
                 (farm_id,),
             )
         else:
             cursor.execute(
-                "SELECT a.*, f.name as farm_name FROM animals a JOIN farms f ON a.farm_id = f.id ORDER BY a.external_tag"
+                "SELECT a.*, f.name as farm_name FROM animals a JOIN farms f ON a.farm_id = f.id AND f.hidden = 0 ORDER BY a.external_tag"
             )
         return [dict(row) for row in cursor.fetchall()]
 
@@ -433,7 +459,7 @@ class DatabaseManager:
             """
             SELECT u.*, f.name as farm_name
             FROM uploads u
-            JOIN farms f ON u.farm_id = f.id
+            JOIN farms f ON u.farm_id = f.id AND f.hidden = 0
             WHERE u.id = ?
         """,
             (upload_id,),
@@ -448,7 +474,7 @@ class DatabaseManager:
                 """
                 SELECT u.*, f.name as farm_name
                 FROM uploads u
-                JOIN farms f ON u.farm_id = f.id
+                JOIN farms f ON u.farm_id = f.id AND f.hidden = 0
                 WHERE u.farm_id = ?
                 ORDER BY u.upload_date DESC
             """,
@@ -458,7 +484,7 @@ class DatabaseManager:
             cursor.execute("""
                 SELECT u.*, f.name as farm_name
                 FROM uploads u
-                JOIN farms f ON u.farm_id = f.id
+                JOIN farms f ON u.farm_id = f.id AND f.hidden = 0
                 ORDER BY u.upload_date DESC
             """)
         return [dict(row) for row in cursor.fetchall()]
@@ -495,7 +521,7 @@ class DatabaseManager:
             FROM detection_results dr
             JOIN animals a ON dr.animal_id = a.id
             JOIN uploads u ON dr.upload_id = u.id
-            JOIN farms f ON u.farm_id = f.id
+            JOIN farms f ON u.farm_id = f.id AND f.hidden = 0
             WHERE 1=1
         """
         params = []
@@ -519,7 +545,7 @@ class DatabaseManager:
             SELECT dr.*, u.filename, u.upload_date, f.name as farm_name
             FROM detection_results dr
             JOIN uploads u ON dr.upload_id = u.id
-            JOIN farms f ON u.farm_id = f.id
+            JOIN farms f ON u.farm_id = f.id AND f.hidden = 0
             WHERE dr.animal_id = ?
             ORDER BY dr.created_at DESC
         """,
@@ -539,7 +565,7 @@ class DatabaseManager:
                 FROM detection_results dr
                 JOIN animals a ON dr.animal_id = a.id
                 JOIN uploads u ON dr.upload_id = u.id
-                JOIN farms f ON u.farm_id = f.id
+                JOIN farms f ON u.farm_id = f.id AND f.hidden = 0
                 WHERE u.farm_id = ?
                 ORDER BY dr.created_at DESC LIMIT 1
             """,
@@ -552,7 +578,7 @@ class DatabaseManager:
                 FROM detection_results dr
                 JOIN animals a ON dr.animal_id = a.id
                 JOIN uploads u ON dr.upload_id = u.id
-                JOIN farms f ON u.farm_id = f.id
+                JOIN farms f ON u.farm_id = f.id AND f.hidden = 0
                 ORDER BY dr.created_at DESC LIMIT 1
             """)
         row = cursor.fetchone()
@@ -591,7 +617,7 @@ class DatabaseManager:
             """
             SELECT u.*, f.name as farm_name
             FROM milk_quality_uploads u
-            JOIN farms f ON u.farm_id = f.id
+            JOIN farms f ON u.farm_id = f.id AND f.hidden = 0
             WHERE u.id = ?
         """,
             (upload_id,),
@@ -606,7 +632,7 @@ class DatabaseManager:
                 """
                 SELECT u.*, f.name as farm_name
                 FROM milk_quality_uploads u
-                JOIN farms f ON u.farm_id = f.id
+                JOIN farms f ON u.farm_id = f.id AND f.hidden = 0
                 WHERE u.farm_id = ?
                 ORDER BY u.upload_date DESC
             """,
@@ -616,7 +642,7 @@ class DatabaseManager:
             cursor.execute("""
                 SELECT u.*, f.name as farm_name
                 FROM milk_quality_uploads u
-                JOIN farms f ON u.farm_id = f.id
+                JOIN farms f ON u.farm_id = f.id AND f.hidden = 0
                 ORDER BY u.upload_date DESC
             """)
         return [dict(row) for row in cursor.fetchall()]
@@ -641,7 +667,7 @@ class DatabaseManager:
                    u.filename, u.upload_date, f.name as farm_name
             FROM milk_quality_results mr
             JOIN milk_quality_uploads u ON mr.upload_id = u.id
-            JOIN farms f ON u.farm_id = f.id
+            JOIN farms f ON u.farm_id = f.id AND f.hidden = 0
             WHERE 1=1
         """
         params = []
@@ -666,8 +692,9 @@ class DatabaseManager:
             FROM detection_results dr
             JOIN animals a ON dr.animal_id = a.id
             JOIN uploads u ON dr.upload_id = u.id
-            JOIN farms f ON u.farm_id = f.id
+            JOIN farms f ON u.farm_id = f.id AND f.hidden = 0
             WHERE dr.is_synced = 0
+              AND NOT EXISTS (SELECT 1 FROM sync_blocked b WHERE b.table_name = 'detection_results' AND b.origin_id = dr.id)
             ORDER BY dr.created_at ASC
         """)
         return [dict(row) for row in cursor.fetchall()]
@@ -803,8 +830,10 @@ class DatabaseManager:
         cursor = self.connection.cursor()
         cursor.execute("""
             SELECT * FROM farms
-            WHERE (origin = 'edge' AND (cloud_id IS NULL OR synced_at IS NULL))
-               OR origin IS NULL
+            WHERE ((origin = 'edge' AND (cloud_id IS NULL OR synced_at IS NULL))
+                   OR origin IS NULL)
+              AND hidden = 0
+              AND NOT EXISTS (SELECT 1 FROM sync_blocked b WHERE b.table_name = 'farms' AND b.origin_id = farms.id)
             ORDER BY id
         """)
         return [dict(row) for row in cursor.fetchall()]
@@ -814,9 +843,10 @@ class DatabaseManager:
         cursor.execute("""
             SELECT a.*, f.cloud_id AS farm_cloud_id
             FROM animals a
-            JOIN farms f ON f.id = a.farm_id
-            WHERE (a.origin = 'edge' AND (a.cloud_id IS NULL OR a.synced_at IS NULL))
-               OR a.origin IS NULL
+            JOIN farms f ON f.id = a.farm_id AND f.hidden = 0
+            WHERE ((a.origin = 'edge' AND (a.cloud_id IS NULL OR a.synced_at IS NULL))
+                   OR a.origin IS NULL)
+              AND NOT EXISTS (SELECT 1 FROM sync_blocked b WHERE b.table_name = 'animals' AND b.origin_id = a.id)
             ORDER BY a.id
         """)
         return [dict(row) for row in cursor.fetchall()]
@@ -826,9 +856,10 @@ class DatabaseManager:
         cursor.execute("""
             SELECT u.*, f.cloud_id AS farm_cloud_id
             FROM uploads u
-            JOIN farms f ON f.id = u.farm_id
-            WHERE (u.origin = 'edge' AND (u.cloud_id IS NULL OR u.synced_at IS NULL))
-               OR u.origin IS NULL
+            JOIN farms f ON f.id = u.farm_id AND f.hidden = 0
+            WHERE ((u.origin = 'edge' AND (u.cloud_id IS NULL OR u.synced_at IS NULL))
+                   OR u.origin IS NULL)
+              AND NOT EXISTS (SELECT 1 FROM sync_blocked b WHERE b.table_name = 'uploads' AND b.origin_id = u.id)
             ORDER BY u.id
         """)
         return [dict(row) for row in cursor.fetchall()]
@@ -839,8 +870,10 @@ class DatabaseManager:
             SELECT r.*, a.cloud_id AS animal_cloud_id
             FROM animal_readings r
             JOIN animals a ON a.id = r.animal_id
-            WHERE (r.origin = 'edge' AND (r.cloud_id IS NULL OR r.synced_at IS NULL))
-               OR r.origin IS NULL
+            JOIN farms f ON f.id = a.farm_id AND f.hidden = 0
+            WHERE ((r.origin = 'edge' AND (r.cloud_id IS NULL OR r.synced_at IS NULL))
+                   OR r.origin IS NULL)
+              AND NOT EXISTS (SELECT 1 FROM sync_blocked b WHERE b.table_name = 'animal_readings' AND b.origin_id = r.id)
             ORDER BY r.id
         """)
         return [dict(row) for row in cursor.fetchall()]
@@ -885,10 +918,11 @@ class DatabaseManager:
         cursor.execute("""
             SELECT u.*, f.cloud_id AS farm_cloud_id
             FROM milk_quality_uploads u
-            JOIN farms f ON f.id = u.farm_id
+            JOIN farms f ON f.id = u.farm_id AND f.hidden = 0
             WHERE u.processed_at IS NOT NULL
               AND ((u.origin = 'edge' AND (u.cloud_id IS NULL OR u.synced_at IS NULL))
                    OR u.origin IS NULL)
+              AND NOT EXISTS (SELECT 1 FROM sync_blocked b WHERE b.table_name = 'milk_quality_uploads' AND b.origin_id = u.id)
             ORDER BY u.id
         """)
         return [dict(row) for row in cursor.fetchall()]
@@ -899,9 +933,11 @@ class DatabaseManager:
             SELECT r.*, u.cloud_id AS upload_cloud_id
             FROM milk_quality_results r
             JOIN milk_quality_uploads u ON u.id = r.upload_id
+            JOIN farms f ON f.id = u.farm_id AND f.hidden = 0
             WHERE u.processed_at IS NOT NULL
               AND ((r.origin = 'edge' AND (r.cloud_id IS NULL OR r.synced_at IS NULL))
                    OR r.origin IS NULL)
+              AND NOT EXISTS (SELECT 1 FROM sync_blocked b WHERE b.table_name = 'milk_quality_results' AND b.origin_id = r.id)
             ORDER BY r.id
         """)
         return [dict(row) for row in cursor.fetchall()]
@@ -935,6 +971,7 @@ class DatabaseManager:
         created_at: str,
         latitude: Optional[float] = None,
         longitude: Optional[float] = None,
+        access: Optional[str] = None,
     ) -> int:
         # The cloud only sends coordinates when the farm has them; a farm
         # without them never overwrites the ones set locally.
@@ -942,25 +979,109 @@ class DatabaseManager:
             latitude = longitude = None
         cursor = self.connection.cursor()
         cursor.execute(
-            "SELECT id FROM farms WHERE cloud_id = ? AND origin = 'cloud'", (cloud_id,)
+            "SELECT id, hidden FROM farms WHERE cloud_id = ? AND origin = 'cloud'", (cloud_id,)
         )
         row = cursor.fetchone()
         if row:
+            # Si la granja volvió a compartirse estaba oculta: se reactiva con su
+            # acceso actual, y lo que quedó apartado por falta de permiso se libera.
             cursor.execute(
                 "UPDATE farms SET name = ?, location = ?, "
-                "latitude = COALESCE(?, latitude), longitude = COALESCE(?, longitude) "
+                "latitude = COALESCE(?, latitude), longitude = COALESCE(?, longitude), "
+                "cloud_access = COALESCE(?, cloud_access), hidden = 0 "
                 "WHERE id = ?",
-                (name, location, latitude, longitude, row["id"]),
+                (name, location, latitude, longitude, access, row["id"]),
             )
             self.connection.commit()
+            if row["hidden"]:
+                self.unblock_farm_data(row["id"])
             return row["id"]
         cursor.execute(
-            "INSERT INTO farms (name, location, latitude, longitude, created_at, origin, cloud_id, synced_at) "
-            "VALUES (?, ?, ?, ?, ?, 'cloud', ?, datetime('now'))",
-            (name, location, latitude, longitude, created_at, cloud_id),
+            "INSERT INTO farms (name, location, latitude, longitude, created_at, origin, cloud_id, synced_at, cloud_access) "
+            "VALUES (?, ?, ?, ?, ?, 'cloud', ?, datetime('now'), ?)",
+            (name, location, latitude, longitude, created_at, cloud_id, access),
         )
         self.connection.commit()
         return cursor.lastrowid
+
+    # ------------------------------------------------------------------
+    # Roles: acceso a las granjas y registros apartados
+    # ------------------------------------------------------------------
+    def set_farm_access(self, cloud_id: int, access: Optional[str]) -> None:
+        """Guarda cómo ve la persona una granja que ya está enlazada con la nube."""
+        if not access:
+            return
+        cursor = self.connection.cursor()
+        cursor.execute("UPDATE farms SET cloud_access = ? WHERE cloud_id = ?", (access, cloud_id))
+        self.connection.commit()
+
+    def hide_farms_by_cloud_id(self, cloud_ids: List[int]) -> int:
+        """Oculta (no borra) las granjas que la persona ya no ve en la nube.
+
+        Devuelve cuántas había y quedan ocultas. Una id desconocida se ignora.
+        """
+        ocultas = 0
+        cursor = self.connection.cursor()
+        for cloud_id in cloud_ids:
+            cursor.execute("UPDATE farms SET hidden = 1 WHERE cloud_id = ?", (cloud_id,))
+            ocultas += cursor.rowcount
+        self.connection.commit()
+        return ocultas
+
+    _TABLAS_APARTABLES = {
+        "farms", "animals", "uploads", "animal_readings", "detection_results",
+        "milk_quality_uploads", "milk_quality_results",
+    }
+
+    def block_record(self, table: str, origin_id: int, reason: str = "") -> bool:
+        """Aparta un registro que la nube rechazó por falta de permiso."""
+        if table not in self._TABLAS_APARTABLES:
+            return False
+        cursor = self.connection.cursor()
+        cursor.execute(
+            "INSERT OR REPLACE INTO sync_blocked (table_name, origin_id, reason) VALUES (?, ?, ?)",
+            (table, origin_id, reason[:300]),
+        )
+        self.connection.commit()
+        return True
+
+    def count_blocked(self) -> int:
+        cursor = self.connection.cursor()
+        cursor.execute("SELECT COUNT(*) AS n FROM sync_blocked")
+        return cursor.fetchone()["n"]
+
+    def list_blocked(self) -> List[Dict[str, Any]]:
+        cursor = self.connection.cursor()
+        cursor.execute("SELECT * FROM sync_blocked ORDER BY blocked_at DESC, table_name, origin_id")
+        return [dict(row) for row in cursor.fetchall()]
+
+    def unblock_farm_data(self, farm_id: int) -> int:
+        """Libera lo apartado que cuelga de una granja (cuando recupera el permiso)."""
+        cursor = self.connection.cursor()
+        cursor.execute(
+            """
+            DELETE FROM sync_blocked WHERE
+                (table_name = 'farms' AND origin_id = ?)
+             OR (table_name = 'animals' AND origin_id IN
+                    (SELECT id FROM animals WHERE farm_id = ?))
+             OR (table_name = 'uploads' AND origin_id IN
+                    (SELECT id FROM uploads WHERE farm_id = ?))
+             OR (table_name = 'animal_readings' AND origin_id IN
+                    (SELECT r.id FROM animal_readings r JOIN animals a ON a.id = r.animal_id
+                     WHERE a.farm_id = ?))
+             OR (table_name = 'detection_results' AND origin_id IN
+                    (SELECT dr.id FROM detection_results dr JOIN uploads u ON u.id = dr.upload_id
+                     WHERE u.farm_id = ?))
+             OR (table_name = 'milk_quality_uploads' AND origin_id IN
+                    (SELECT id FROM milk_quality_uploads WHERE farm_id = ?))
+             OR (table_name = 'milk_quality_results' AND origin_id IN
+                    (SELECT r.id FROM milk_quality_results r
+                     JOIN milk_quality_uploads u ON u.id = r.upload_id WHERE u.farm_id = ?))
+            """,
+            (farm_id,) * 7,
+        )
+        self.connection.commit()
+        return cursor.rowcount
 
     def upsert_animal_from_cloud(
         self, farm_id: int, cloud_id: int, external_tag: str, name: str, created_at: str
