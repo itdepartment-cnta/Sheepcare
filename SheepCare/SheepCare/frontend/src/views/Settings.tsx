@@ -212,7 +212,10 @@ export default function SettingsView() {
         try {
             const r = await settingsApi.syncNow();
             if (r.success) {
-                avisar.ok('Sincronización completada', `${numero(r.synced_count)} registros sincronizados (envío y recepción).`);
+                const partes = [`${numero(r.synced_count)} enviados`, `${numero(r.pulled_count ?? 0)} recibidos`];
+                if (r.removed_count) partes.push(`${numero(r.removed_count)} ${r.removed_count === 1 ? 'granja ya no es visible' : 'granjas ya no son visibles'}`);
+                if (r.blocked_count) partes.push(`${numero(r.blocked_count)} sin permiso (no se envían)`);
+                avisar.ok('Sincronización completada', `${partes.join(', ')}.`);
             } else {
                 avisar.error('No se pudo sincronizar', r.error || 'Inténtalo de nuevo.');
             }

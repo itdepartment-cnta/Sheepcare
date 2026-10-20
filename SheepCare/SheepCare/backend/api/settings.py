@@ -42,9 +42,13 @@ class BlockedItem(BaseModel):
 
 class SyncResponse(BaseModel):
     success: bool
+    # Registros enviados a la nube
     synced_count: int
     error: Optional[str] = None
     blocked_count: int = 0
+    # Registros recibidos de la nube y granjas que la persona ya no ve (ocultadas)
+    pulled_count: int = 0
+    removed_count: int = 0
 
 
 class CloudConfigResponse(BaseModel):
@@ -151,16 +155,22 @@ async def sync_now():
     try:
         # Push local data to cloud
         push_result = sync_service.sync_to_cloud()
-        # Pull cloud data to local
-        if push_result.get("success"):
-            sync_service.pull_from_cloud()
+        push_ok = bool(push_result.get("success", False))
+        # Pull cloud data to local. Su resultado cuenta: antes se descartaba y un fallo al
+        # recibir (login, red, un 500 de la nube) se veía como una sincronización correcta.
+        pull_result = sync_service.pull_from_cloud() if push_ok else {}
+        pull_ok = bool(pull_result.get("success", False)) if push_ok else True
 
-        total = push_result.get("synced_count", 0)
+        error = push_result.get("error")
+        if not error and not pull_ok:
+            error = pull_result.get("error") or "No se pudieron recibir los datos de la nube."
         return SyncResponse(
-            success=push_result.get("success", False),
-            synced_count=total,
-            error=push_result.get("error"),
+            success=push_ok and pull_ok,
+            synced_count=push_result.get("synced_count", 0),
+            error=error,
             blocked_count=push_result.get("blocked_count", 0),
+            pulled_count=pull_result.get("pulled_count", 0),
+            removed_count=pull_result.get("removed_count", 0),
         )
     except Exception as e:
         return SyncResponse(success=False, synced_count=0, error=str(e))

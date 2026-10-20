@@ -27,9 +27,11 @@ def _run_auto_sync() -> None:
     if not svc.check_cloud_connectivity():
         return
     push = svc.sync_to_cloud()
-    if push.get("success"):
-        svc.pull_from_cloud()
-    logger.info("Auto-sync completed: %s", push)
+    pull = svc.pull_from_cloud() if push.get("success") else None
+    logger.info("Auto-sync completed: push=%s pull=%s", push, pull)
+    # Un pull que falla no debe pasar por correcto: solo quedaba en una línea de INFO.
+    if pull is not None and not pull.get("success"):
+        logger.warning("Auto-sync: el pull falló: %s", pull.get("error"))
 
 
 async def _auto_sync_loop() -> None:

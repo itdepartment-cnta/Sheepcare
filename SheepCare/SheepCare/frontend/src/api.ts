@@ -217,7 +217,14 @@ export const settingsApi = {
     system: () => api.get<SystemInfo>('/settings/system').then(r => r.data),
     syncStatus: () => api.get<SyncStatus>('/settings/sync/status').then(r => r.data),
     checkConnectivity: () => api.get<ConnectivityStatus>('/settings/sync/connectivity').then(r => r.data),
-    syncNow: () => api.post<{ success: boolean; synced_count: number; error?: string }>('/settings/sync/now').then(r => r.data),
+    syncNow: () => api.post<{
+        success: boolean;
+        synced_count: number;       // enviados a la nube
+        pulled_count?: number;      // recibidos de la nube
+        removed_count?: number;     // granjas que ya no ves (se ocultan)
+        blocked_count?: number;     // datos rechazados por falta de permiso
+        error?: string;
+    }>('/settings/sync/now').then(r => r.data),
     cloudConfig: () => api.get<CloudConfig>('/settings/cloud/config').then(r => r.data),
     saveCloudConfig: (cloud_url: string, email: string, password: string) =>
         api.post<CloudConfig>('/settings/cloud/config', { cloud_url, email, password }).then(r => r.data),
