@@ -256,7 +256,10 @@ export default function FarmsView() {
                             {farms.map(f => (
                                 <Tr key={f.id}>
                                     <Td numeric muted>{numero(f.id)}</Td>
-                                    <Td strong>{f.name}</Td>
+                                    <Td strong>
+                                        {f.name}
+                                        {f.access === 'shared' && <Chip tone="info" className="ml-2">Compartida contigo</Chip>}
+                                    </Td>
                                     <Td muted={!f.location}>{f.location || '—'}</Td>
                                     <Td>
                                         {f.latitude != null && f.longitude != null ? (
@@ -270,14 +273,17 @@ export default function FarmsView() {
                                     </Td>
                                     <Td muted>{fecha(f.created_at)}</Td>
                                     <Td>
-                                        <div className="flex justify-end gap-0.5">
-                                            <IconButton label={`Editar ${f.name}`} onClick={() => abrirEdicion(f)}>
-                                                <PencilSimple size={18} aria-hidden="true" />
-                                            </IconButton>
-                                            <IconButton label={`Eliminar ${f.name}`} tone="danger" onClick={() => setABorrar(f)}>
-                                                <TrashSimple size={18} aria-hidden="true" />
-                                            </IconButton>
-                                        </div>
+                                        {/* Una granja compartida se ve y se le suben datos, pero no se edita ni se borra. */}
+                                        {f.access !== 'shared' && (
+                                            <div className="flex justify-end gap-0.5">
+                                                <IconButton label={`Editar ${f.name}`} onClick={() => abrirEdicion(f)}>
+                                                    <PencilSimple size={18} aria-hidden="true" />
+                                                </IconButton>
+                                                <IconButton label={`Eliminar ${f.name}`} tone="danger" onClick={() => setABorrar(f)}>
+                                                    <TrashSimple size={18} aria-hidden="true" />
+                                                </IconButton>
+                                            </div>
+                                        )}
                                     </Td>
                                 </Tr>
                             ))}

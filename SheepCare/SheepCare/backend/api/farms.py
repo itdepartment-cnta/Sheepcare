@@ -41,6 +41,26 @@ class FarmResponse(BaseModel):
     created_at: str
     latitude: Optional[float] = None
     longitude: Optional[float] = None
+    # Relación de la persona con la granja según la nube: "owner", "shared" o "admin".
+    # None en una granja solo local (la persona es quien la creó).
+    access: Optional[str] = None
+
+
+def _respuesta(farm: dict) -> "FarmResponse":
+    return FarmResponse(**{**farm, "access": farm.get("cloud_access")})
+
+
+def _exigir_gestion(farm: dict) -> None:
+    """Una granja compartida se ve y se le suben datos, pero no se edita ni se borra.
+
+    La nube lo comprueba igualmente, pero aquí hay que decirlo antes: si no, el cambio
+    local no se enviaría nunca y el equipo mostraría algo que la nube no tiene.
+    """
+    if farm.get("cloud_access") == "shared":
+        raise HTTPException(
+            status_code=403,
+            detail="Esta granja está compartida contigo: solo quien la posee puede editarla o borrarla.",
+        )
 
 
 def _sync_farm_to_calendar(farm_id: int, name: str, location: str) -> None:
@@ -62,14 +82,14 @@ async def create_farm(farm: FarmCreate, background_tasks: BackgroundTasks):
     farm_id = db.add_farm(farm.name, farm.location, farm.latitude, farm.longitude)
     result = db.get_farm(farm_id)
     background_tasks.add_task(_sync_farm_to_calendar, farm_id, farm.name, farm.location)
-    return FarmResponse(**result)
+    return _respuesta(result)
 
 
 @router.get("/", response_model=List[FarmResponse])
 async def list_farms():
     """List all registered farms."""
     farms = db.list_farms()
-    return [FarmResponse(**f) for f in farms]
+    return [_respuesta(f) for f in farms]
 
 
 @router.get("/{farm_id}", response_model=FarmResponse)
@@ -78,12 +98,16 @@ async def get_farm(farm_id: int):
     farm = db.get_farm(farm_id)
     if not farm:
         raise HTTPException(status_code=404, detail="Farm not found")
-    return FarmResponse(**farm)
+    return _respuesta(farm)
 
 
 @router.put("/{farm_id}", response_model=FarmResponse)
 async def update_farm(farm_id: int, farm: FarmUpdate):
     """Update farm details."""
+    actual = db.get_farm(farm_id)
+    if not actual:
+        raise HTTPException(status_code=404, detail="Farm not found")
+    _exigir_gestion(actual)
     # Coordinates omitted -> untouched; sent (even as null) -> replaced.
     coords = None
     if {"latitude", "longitude"} & farm.model_fields_set:
@@ -100,7 +124,7 @@ async def update_farm(farm_id: int, farm: FarmUpdate):
     except Exception:
         pass
 
-    return FarmResponse(**result)
+    return _respuesta(result)
 
 
 @router.delete("/{farm_id}", status_code=204)
@@ -109,4 +133,5 @@ async def delete_farm(farm_id: int):
     farm = db.get_farm(farm_id)
     if not farm:
         raise HTTPException(status_code=404, detail="Farm not found")
+    _exigir_gestion(farm)
     db.delete_farm(farm_id)

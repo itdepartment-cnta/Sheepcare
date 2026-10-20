@@ -372,6 +372,14 @@ export default function SettingsView() {
                                     {syncStatus.last_error && (
                                         <p className="rounded-md bg-danger-bg px-3 py-2 text-small text-danger-text">{syncStatus.last_error}</p>
                                     )}
+                                    {(syncStatus.blocked_count ?? 0) > 0 && (
+                                        <p className="rounded-md bg-warn-bg px-3 py-2 text-small text-warn-text">
+                                            {syncStatus.blocked_count === 1
+                                                ? '1 dato no se envió a la nube'
+                                                : `${syncStatus.blocked_count} datos no se enviaron a la nube`}
+                                            {' '}porque no tienes permiso sobre su granja. Se conservan en este equipo y no se vuelven a intentar.
+                                        </p>
+                                    )}
                                 </dl>
                             )}
 

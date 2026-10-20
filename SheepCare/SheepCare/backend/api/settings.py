@@ -8,7 +8,7 @@ import time
 from datetime import datetime, timezone
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, field_validator
-from typing import Optional
+from typing import List, Optional
 from ..data_access.db_manager import DatabaseManager
 from ..data_access.sync_manager import SyncService
 from ..utils.helpers import get_project_root
@@ -29,12 +29,22 @@ class SyncStatusResponse(BaseModel):
     last_sync: Optional[str]
     last_status: Optional[str]
     last_error: Optional[str]
+    # Registros que la nube rechazó por falta de permiso y que ya no se reintentan
+    blocked_count: int = 0
+
+
+class BlockedItem(BaseModel):
+    table_name: str
+    origin_id: int
+    reason: str
+    blocked_at: str
 
 
 class SyncResponse(BaseModel):
     success: bool
     synced_count: int
     error: Optional[str] = None
+    blocked_count: int = 0
 
 
 class CloudConfigResponse(BaseModel):
@@ -99,13 +109,27 @@ async def get_system_info():
 async def get_sync_status():
     """Get last sync status."""
     last = db.get_last_sync()
+    blocked = db.count_blocked()
     if last:
         return SyncStatusResponse(
             last_sync=last["last_sync_at"],
             last_status=last["status"],
             last_error=last.get("last_error", ""),
+            blocked_count=blocked,
         )
-    return SyncStatusResponse(last_sync=None, last_status=None, last_error=None)
+    return SyncStatusResponse(last_sync=None, last_status=None, last_error=None, blocked_count=blocked)
+
+
+@router.get("/sync/blocked", response_model=List[BlockedItem])
+async def get_sync_blocked():
+    """Registros que la nube rechazó por falta de permiso: se conservan aquí y no se reenvían."""
+    return [
+        BlockedItem(
+            table_name=b["table_name"], origin_id=b["origin_id"],
+            reason=b["reason"], blocked_at=str(b["blocked_at"]),
+        )
+        for b in db.list_blocked()
+    ]
 
 
 @router.get("/sync/connectivity", response_model=ConnectivityResponse)
@@ -136,6 +160,7 @@ async def sync_now():
             success=push_result.get("success", False),
             synced_count=total,
             error=push_result.get("error"),
+            blocked_count=push_result.get("blocked_count", 0),
         )
     except Exception as e:
         return SyncResponse(success=False, synced_count=0, error=str(e))

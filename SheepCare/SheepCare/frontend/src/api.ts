@@ -13,6 +13,9 @@ export interface Farm {
     // Posición real de la granja (para el servicio meteorológico).
     latitude?: number | null;
     longitude?: number | null;
+    // Relación con la granja según la nube. «shared»: se ve y se le suben datos, pero
+    // no se edita ni se borra. Ausente en una granja solo local.
+    access?: 'owner' | 'shared' | 'admin' | null;
 }
 
 export interface FarmCoordinates {
@@ -188,6 +191,8 @@ export interface SyncStatus {
     last_sync: string | null;
     last_status: string | null;
     last_error: string | null;
+    // Datos que la nube rechazó por falta de permiso y que ya no se reenvían.
+    blocked_count?: number;
 }
 
 export interface CloudConfig {
