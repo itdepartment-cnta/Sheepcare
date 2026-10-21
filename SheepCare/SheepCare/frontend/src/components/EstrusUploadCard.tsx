@@ -93,7 +93,7 @@ export default function EstrusUploadCard({ farms }: { farms: Farm[] }) {
                             accept=".xlsx,.xls,.csv"
                             file={file}
                             onFile={f => { setFile(f); setErrorArchivo(''); }}
-                            hint="Columna A: identificador del animal. Desde la C: fechas con los valores de resistencia."
+                            hint="Columna A: identificador del animal. Después, una columna por lectura de resistencia (2 por animal)."
                         />
                         {errorArchivo && <p role="alert" className="mt-1.5 text-small font-medium text-danger-text">{errorArchivo}</p>}
                     </div>

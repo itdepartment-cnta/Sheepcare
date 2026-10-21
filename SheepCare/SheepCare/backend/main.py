@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 
 _AUTO_SYNC_INTERVAL = int(os.environ.get("AUTO_SYNC_INTERVAL_MINUTES", "15")) * 60
 
+# Versión de la aplicación: la de la API y la de /api/health son la misma.
+APP_VERSION = "1.5.0"
+
 
 def _run_auto_sync() -> None:
     """Blocking: check connectivity and run bidirectional sync if reachable."""
@@ -59,7 +62,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="SHEEPCARE API",
     description="Smart Estrus Detection System - Backend API",
-    version="2.0.0",
+    version=APP_VERSION,
     lifespan=lifespan,
 )
 
@@ -90,7 +93,7 @@ app.include_router(reporting.router, prefix="/api/reporting", tags=["Reporting"]
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "version": "1.0.0"}
+    return {"status": "ok", "version": APP_VERSION}
 
 
 # ── Servir frontend React ─────────────────────────────────────────────────────
