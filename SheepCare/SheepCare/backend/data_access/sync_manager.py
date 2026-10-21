@@ -220,6 +220,7 @@ class SyncService:
 
         if not any([farms, animals, readings, uploads, results, milk_uploads, milk_results]):
             self._db.update_cloud_sync_time()
+            self._db.log_sync("success")
             return {"success": True, "synced_count": 0}
 
         # Build payload
@@ -634,6 +635,7 @@ class SyncService:
                 self._confirm_sync(confirmed_ids)
 
             self._db.update_cloud_sync_time()
+            self._db.log_sync("success")
 
             # Lo recién bajado también va al Farm Calendar local, con su fecha
             # original. Después de guardar y confirmar, y sin poder afectarlos.

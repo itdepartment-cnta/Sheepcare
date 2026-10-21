@@ -135,6 +135,7 @@ export default function HistoryView() {
                 }
             />
 
+            <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <FarmReportCard
                 index={0}
                 farms={farms}
@@ -151,6 +152,7 @@ export default function HistoryView() {
                 descripcion="Resumen de la calidad de leche (SCC) de una granja: muestras con calidad media, gráfica por subida y detalle."
                 descargar={reportsApi.milkQualityPdf}
             />
+            </div>
 
             <Card padded={false} index={2}>
                 <div className="grid grid-cols-1 gap-4 border-b border-line p-4 sm:grid-cols-3 sm:p-5">

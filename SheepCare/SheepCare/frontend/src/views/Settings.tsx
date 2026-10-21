@@ -289,7 +289,7 @@ export default function SettingsView() {
             <PageHeader
                 eyebrow="Sistema"
                 title="Ajustes"
-                description="Configuración de la sincronización con la nube."
+                description="Conexión con la nube y servicios externos."
             />
 
             <div className="max-w-2xl">

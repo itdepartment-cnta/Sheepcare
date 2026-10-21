@@ -68,13 +68,14 @@ export default function FarmReportCard({ farms, id, titulo, descripcion, descarg
     };
 
     return (
-        <Card className="mb-4" index={index}>
+        <Card className="h-full" index={index}>
             <CardHeader
                 title={titulo}
                 description={`${descripcion} Sin fechas, incluye todos los datos.`}
                 icon={<FileText size={18} aria-hidden="true" />}
             />
-            <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+            <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
+                <div className="sm:col-span-2">
                 <SelectField
                     id={`${id}-granja`}
                     label="Granja"
@@ -85,6 +86,7 @@ export default function FarmReportCard({ farms, id, titulo, descripcion, descarg
                     <option value="">Selecciona una granja</option>
                     {farms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
                 </SelectField>
+                </div>
                 <TextField
                     id={`${id}-desde`}
                     label="Desde"
@@ -101,8 +103,7 @@ export default function FarmReportCard({ farms, id, titulo, descripcion, descarg
                     error={errorFechas}
                     onChange={e => { setHasta(e.target.value); setErrorFechas(''); }}
                 />
-                <div className="flex flex-col gap-1.5">
-                    <span aria-hidden="true" className="hidden select-none text-small lg:block">&nbsp;</span>
+                <div className="flex flex-col gap-1.5 sm:col-span-2">
                     <Button
                         variant="secondary"
                         loading={loading}
