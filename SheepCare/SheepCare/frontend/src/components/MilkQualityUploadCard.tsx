@@ -12,6 +12,9 @@ import {
 // El modelo devuelve «Lower»/«Upper»; se muestran en español sin tocar el valor real.
 const MILK_QUALITY_LABELS: Record<string, string> = { Lower: 'Alta', Upper: 'Media' };
 
+// Umbral del modelo, en células somáticas.
+const UMBRAL_CELULAS = 500000;
+
 const nombreGranja = (f: Farm) => (f.location ? `${f.name} · ${f.location}` : f.name);
 
 /**
@@ -128,8 +131,8 @@ export default function MilkQualityUploadCard({ farms }: { farms: Farm[] }) {
                     />
                     <div className="grid grid-cols-3 gap-4">
                         <Stat size="md" value={numero(result.total_samples)} label="Muestras" />
-                        <Stat size="md" value={numero(result.lower_count)} label="Calidad alta" info="Menos de 500000 células somáticas" />
-                        <Stat size="md" tone="danger" value={numero(result.upper_count)} label="Calidad media" info="Más de 500000 células somáticas" />
+                        <Stat size="md" value={numero(result.lower_count)} label="Calidad alta" info={`Menos de ${numero(UMBRAL_CELULAS)} células somáticas`} />
+                        <Stat size="md" tone="warn" value={numero(result.upper_count)} label="Calidad media" info={`Más de ${numero(UMBRAL_CELULAS)} células somáticas`} />
                     </div>
 
                     <h3 className="mb-2 mt-6 text-micro font-medium uppercase tracking-[0.1em] text-ink-3">Resultado por muestra</h3>
@@ -146,7 +149,7 @@ export default function MilkQualityUploadCard({ farms }: { farms: Farm[] }) {
                                     <Tr key={`${r.animal_id}-${i}`}>
                                         <Td mono strong>{r.animal_id}</Td>
                                         <Td>
-                                            <Chip tone={r.result === 'Upper' ? 'danger' : 'ok'}>
+                                            <Chip tone={r.result === 'Upper' ? 'warn' : 'ok'}>
                                                 {MILK_QUALITY_LABELS[r.result] ?? r.result}
                                             </Chip>
                                         </Td>

@@ -36,5 +36,6 @@ export function Toaster({ tema }: { tema: Tema }) {
 // eslint-disable-next-line react-refresh/only-export-components -- API imperativa de avisos, a propósito junto al <Toaster>
 export const avisar = {
     ok: (titulo: string, descripcion?: string) => toast.success(titulo, { description: descripcion }),
-    error: (titulo: string, descripcion?: string) => toast.error(titulo, { description: descripcion }),
+    // Los errores se quedan más tiempo: hay que leerlos y decidir qué hacer (WCAG 2.2.1).
+    error: (titulo: string, descripcion?: string) => toast.error(titulo, { description: descripcion, duration: 10000 }),
 };

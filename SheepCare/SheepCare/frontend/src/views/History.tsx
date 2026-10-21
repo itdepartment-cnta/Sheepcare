@@ -3,12 +3,15 @@ import { ArrowsClockwise, ClockCounterClockwise } from '@phosphor-icons/react';
 import { farmsApi, resultsApi, milkQualityApi, reportsApi } from '../api';
 import type { Farm, DetectionResult, MilkQualityResult } from '../api';
 import FarmReportCard from '../components/FarmReportCard';
-import { fecha, porcentaje } from '../lib/format';
+import { fecha, numero, porcentaje } from '../lib/format';
 import {
     Button, Card, Chip, EmptyState, ErrorState, PageHeader, SelectField, Table, TableSkeleton, Td, Th, Tr,
 } from '../components/ui';
 
 type Kind = 'celo' | 'milk_quality';
+
+// Filas que se pintan de una vez: con miles de resultados, pintarlas todas deja la pantalla bloqueada.
+const PAGINA = 200;
 
 interface UnifiedRow {
     key: string;
@@ -64,11 +67,12 @@ function toUnifiedMilkQuality(r: MilkQualityResult): UnifiedRow {
 }
 
 const toneOf = (r: UnifiedRow) =>
-    r.result === 'Celo' ? 'info' : r.result === 'Upper' ? 'danger' : r.result === 'Lower' ? 'ok' : 'neutral';
+    r.result === 'Celo' ? 'info' : r.result === 'Upper' ? 'warn' : r.result === 'Lower' ? 'ok' : 'neutral';
 
 export default function HistoryView() {
     const [farms, setFarms] = useState<Farm[]>([]);
     const [rows, setRows] = useState<UnifiedRow[] | null>(null);
+    const [limite, setLimite] = useState(PAGINA);
     const [error, setError] = useState(false);
     const [intento, setIntento] = useState(0);
     const [farmFilter, setFarmFilter] = useState<number | ''>('');
@@ -99,6 +103,7 @@ export default function HistoryView() {
                 ];
                 merged.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
                 setRows(merged);
+                setLimite(PAGINA);
             })
             .catch(() => { if (vigente) setError(true); });
         return () => { vigente = false; };
@@ -175,6 +180,20 @@ export default function HistoryView() {
                     </SelectField>
                 </div>
 
+                {/* Siempre montado: al filtrar, el lector de pantalla anuncia el nuevo recuento */}
+                <p
+                    role="status"
+                    className={rows && !error ? 'border-b border-line px-5 py-2.5 text-small text-ink-3' : 'sr-only'}
+                >
+                    {rows && !error
+                        ? rows.length === 1
+                            ? '1 resultado'
+                            : rows.length > limite
+                                ? `Mostrando ${numero(limite)} de ${numero(rows.length)} resultados`
+                                : `${numero(rows.length)} resultados`
+                        : ''}
+                </p>
+
                 {error ? (
                     <ErrorState action={<Button onClick={recargar}>Reintentar</Button>}>
                         Revisa que el servicio local esté en marcha e inténtalo de nuevo.
@@ -192,6 +211,7 @@ export default function HistoryView() {
                             : 'Sube un archivo desde «Subir datos» y sus resultados aparecerán aquí.'}
                     </EmptyState>
                 ) : (
+                    <>
                     <Table caption="Historial de resultados" minWidth="52rem" maxHeight="36rem">
                         <thead>
                             <tr>
@@ -205,7 +225,7 @@ export default function HistoryView() {
                             </tr>
                         </thead>
                         <tbody>
-                            {rows.map(r => (
+                            {rows.slice(0, limite).map(r => (
                                 <Tr key={r.key}>
                                     <Td>
                                         <span className="font-mono font-medium text-ink">{r.animal_tag}</span>
@@ -224,6 +244,14 @@ export default function HistoryView() {
                             ))}
                         </tbody>
                     </Table>
+                    {rows.length > limite && (
+                        <div className="flex justify-center border-t border-line p-4">
+                            <Button onClick={() => setLimite(n => n + PAGINA)}>
+                                Mostrar {numero(Math.min(PAGINA, rows.length - limite))} más
+                            </Button>
+                        </div>
+                    )}
+                    </>
                 )}
             </Card>
         </>

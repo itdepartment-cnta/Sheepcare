@@ -189,6 +189,7 @@ export default function FarmsView() {
                             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                 <TextField
                                     label="Latitud"
+                                    aria-describedby="coordenadas-ayuda"
                                     inputMode="decimal"
                                     invalid={!!errorCoords}
                                     value={latitude}
@@ -196,6 +197,7 @@ export default function FarmsView() {
                                 />
                                 <TextField
                                     label="Longitud"
+                                    aria-describedby="coordenadas-ayuda"
                                     inputMode="decimal"
                                     invalid={!!errorCoords}
                                     value={longitude}
@@ -203,9 +205,9 @@ export default function FarmsView() {
                                 />
                             </div>
                             {errorCoords ? (
-                                <p role="alert" className="mt-1.5 text-small font-medium text-danger-text">{errorCoords}</p>
+                                <p id="coordenadas-ayuda" role="alert" className="mt-1.5 text-small font-medium text-danger-text">{errorCoords}</p>
                             ) : (
-                                <p className="mt-1.5 text-small text-ink-3">
+                                <p id="coordenadas-ayuda" className="mt-1.5 text-small text-ink-3">
                                     Opcionales. Por ejemplo, 42,8125 y -1,6458. Permiten consultar el tiempo de la granja.
                                 </p>
                             )}

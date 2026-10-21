@@ -91,6 +91,8 @@ if (-not $SkipFrontend) {
     Write-Host "`n[1] Compilando frontend React..." -ForegroundColor Yellow
     Push-Location (Join-Path $Root 'frontend')
     try {
+        # La interfaz muestra esta versión en el menú lateral
+        $env:VITE_APP_VERSION = $Version
         & npm run build
         if ($LASTEXITCODE -ne 0) { Write-Error 'Fallo npm run build' }
     } finally { Pop-Location }

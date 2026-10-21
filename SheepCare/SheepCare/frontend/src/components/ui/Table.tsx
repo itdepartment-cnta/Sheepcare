@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
 /**
@@ -8,8 +9,29 @@ import type { ReactNode } from 'react';
 export function Table({
     caption, children, maxHeight, minWidth = '40rem',
 }: { caption: string; children: ReactNode; maxHeight?: string; minWidth?: string }) {
+    const caja = useRef<HTMLDivElement>(null);
+    const [desplazable, setDesplazable] = useState(false);
+
+    // Si la tabla se desplaza, la región debe poder enfocarse para recorrerla con
+    // el teclado (WCAG 2.1.1). Solo entonces, para no añadir paradas de tabulador.
+    useEffect(() => {
+        const el = caja.current;
+        if (!el) return;
+        const medir = () => setDesplazable(el.scrollWidth > el.clientWidth || el.scrollHeight > el.clientHeight);
+        medir();
+        const obs = new ResizeObserver(medir);
+        obs.observe(el);
+        if (el.firstElementChild) obs.observe(el.firstElementChild);
+        return () => obs.disconnect();
+    }, []);
+
     return (
-        <div className="overflow-auto" style={{ maxHeight }}>
+        <div
+            ref={caja}
+            className="overflow-auto focus-visible:outline-offset-[-2px]"
+            style={{ maxHeight }}
+            {...(desplazable ? { tabIndex: 0, role: 'region', 'aria-label': caption } : {})}
+        >
             <table className="w-full border-collapse text-body" style={{ minWidth }}>
                 <caption className="sr-only">{caption}</caption>
                 {children}

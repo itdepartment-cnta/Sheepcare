@@ -56,7 +56,7 @@ export function TextField({ label, hint, error, invalid, hideLabel, className, i
                 required={required}
                 aria-invalid={error || invalid ? true : undefined}
                 aria-describedby={describedBy(id, hint, error)}
-                className={CONTROL + (error || invalid ? ' border-danger' : ' border-ink-4')}
+                className={CONTROL + (error || invalid ? ' border-danger' : ' border-control')}
                 {...resto}
             />
         </Envoltorio>
@@ -76,7 +76,7 @@ export function SelectField({ label, hint, error, hideLabel, className, id: idPr
                     required={required}
                     aria-invalid={error ? true : undefined}
                     aria-describedby={describedBy(id, hint, error)}
-                    className={CONTROL + ' appearance-none pr-9 cursor-pointer' + (error ? ' border-danger' : ' border-ink-4')}
+                    className={CONTROL + ' appearance-none pr-9 cursor-pointer' + (error ? ' border-danger' : ' border-control')}
                     {...resto}
                 >
                     {children}

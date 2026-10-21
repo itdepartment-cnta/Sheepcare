@@ -56,7 +56,7 @@ export function FileDrop({ label, accept, file, onFile, hint, required }: Props)
                     'has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-brand-600 ' +
                     (encima
                         ? 'border-brand-600 bg-brand-soft'
-                        : 'border-ink-4 bg-canvas-soft hover:border-ink-3')
+                        : 'border-control bg-canvas-soft hover:border-ink-3')
                 }
             >
                 <input

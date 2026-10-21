@@ -15,6 +15,9 @@ interface Item {
 
 const FC_URL = 'http://localhost:8002/';
 
+// La versión la pone el script del instalador (VITE_APP_VERSION); en desarrollo no existe.
+const VERSION = import.meta.env.VITE_APP_VERSION as string | undefined;
+
 const GRUPOS: { titulo: string; items: Item[] }[] = [
     {
         titulo: 'Análisis',
@@ -120,7 +123,7 @@ export default function Sidebar({ tema, onAlternarTema }: { tema: Tema; onAltern
                 </div>
 
                 <div className="mt-3 flex items-center gap-1 max-lg:mt-0 max-lg:flex-col">
-                    <p className="flex-1 px-3 text-micro text-side-ink-2 max-lg:hidden">v1.0.0</p>
+                    <p className="flex-1 px-3 text-micro text-side-ink-2 max-lg:hidden">{VERSION ? `v${VERSION}` : 'desarrollo'}</p>
                     <button
                         type="button"
                         onClick={onAlternarTema}

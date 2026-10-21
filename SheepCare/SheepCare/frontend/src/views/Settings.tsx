@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
-import { ArrowsClockwise, Cloud, CloudSlash, CloudSun, Lightning, LinkBreak, PlugsConnected, WifiHigh, WifiSlash } from '@phosphor-icons/react';
+import { ArrowsClockwise, Cloud, CloudSun, Lightning, LinkBreak, PlugsConnected, Timer, WifiHigh, WifiSlash } from '@phosphor-icons/react';
 import { settingsApi } from '../api';
 import type { CloudConfig, ConnectivityStatus, SyncStatus, WeatherConfig } from '../api';
 import { mensajeDeError } from '../lib/errors';
@@ -368,12 +368,18 @@ export default function SettingsView() {
                                     <Dato etiqueta="Estado">
                                         {syncStatus.last_status ? (
                                             <Chip tone={syncStatus.last_status === 'success' ? 'ok' : 'danger'}>
-                                                {syncStatus.last_status === 'success' ? 'Correcta' : syncStatus.last_status}
+                                                {syncStatus.last_status === 'success' ? 'Correcta' : syncStatus.last_status === 'error' ? 'Con errores' : syncStatus.last_status}
                                             </Chip>
                                         ) : '—'}
                                     </Dato>
                                     {syncStatus.last_error && (
-                                        <p className="rounded-md bg-danger-bg px-3 py-2 text-small text-danger-text">{syncStatus.last_error}</p>
+                                        <div className="rounded-md bg-danger-bg px-3 py-2 text-small text-danger-text">
+                                            <p>La última sincronización no se completó. Comprueba la conexión con la nube y vuelve a intentarlo.</p>
+                                            <details className="mt-1">
+                                                <summary className="cursor-pointer font-medium">Detalle técnico</summary>
+                                                <p className="mt-1 break-words font-mono">{syncStatus.last_error}</p>
+                                            </details>
+                                        </div>
                                     )}
                                     {(syncStatus.blocked_count ?? 0) > 0 && (
                                         <p className="rounded-md bg-warn-bg px-3 py-2 text-small text-warn-text">
@@ -395,7 +401,7 @@ export default function SettingsView() {
                                         required
                                         autoFocus
                                         type="url"
-                                        placeholder="https://cloud.miservidor.com"
+                                        placeholder="https://sheepcare.cnta.es"
                                         value={cloudUrl}
                                         error={errores.url}
                                         onChange={e => { setCloudUrl(e.target.value); setErrores(x => ({ ...x, url: undefined })); }}
@@ -453,7 +459,7 @@ export default function SettingsView() {
                             </div>
 
                             <p className="flex items-start gap-2 border-t border-line pt-4 text-small text-ink-3">
-                                <CloudSlash size={16} aria-hidden="true" className="mt-0.5 shrink-0" />
+                                <Timer size={16} aria-hidden="true" className="mt-0.5 shrink-0" />
                                 Cuando hay conexión con la nube se sincroniza solo cada 15 minutos. Necesitas una cuenta en SheepCare Cloud para usar esta función.
                             </p>
                         </div>

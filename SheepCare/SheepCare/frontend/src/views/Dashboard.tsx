@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Barn, UploadSimple, ArrowRight, ClockCounterClockwise, Pulse, CloudArrowUp } from '@phosphor-icons/react';
-import { farmsApi, resultsApi, uploadsApi, settingsApi } from '../api';
-import type { DetectionResult, Farm, SyncStatus, UploadSummary } from '../api';
+import { farmsApi, milkQualityApi, resultsApi, uploadsApi, settingsApi } from '../api';
+import type { DetectionResult, Farm, MilkQualityUploadSummary, SyncStatus, UploadSummary } from '../api';
 import { fecha, fechaLarga, numero, porcentaje } from '../lib/format';
 import { Card, CardHeader, Chip, EmptyState, ErrorState, LinkButton, PageHeader, Button, Skeleton } from '../components/ui';
 
@@ -10,13 +10,15 @@ interface Datos {
     subidas: UploadSummary[];
     ultima: DetectionResult | null;
     sync: SyncStatus | null;
+    leche: MilkQualityUploadSummary[];
 }
 
 /** Cifra grande con su etiqueta, para los bloques de resumen. */
-function Cifra({ valor, etiqueta, destacada = false }: { valor: string; etiqueta: string; destacada?: boolean }) {
+function Cifra({ valor, etiqueta, destacada = false, tono }: { valor: string; etiqueta: string; destacada?: boolean; tono?: 'warn' }) {
+    const color = tono === 'warn' ? 'text-warn-text' : destacada ? 'text-info-text' : 'text-ink';
     return (
         <div>
-            <p className={`font-display text-display tabular ${destacada ? 'text-info-text' : 'text-ink'}`}>{valor}</p>
+            <p className={`font-display text-display tabular ${color}`}>{valor}</p>
             <p className="mt-1 text-small text-ink-3">{etiqueta}</p>
         </div>
     );
@@ -46,9 +48,11 @@ export default function Dashboard() {
             resultsApi.latest(),
             // La sincronización es secundaria: si falla, el panel sigue funcionando.
             settingsApi.syncStatus().catch(() => null),
+            // Igual: sin el resumen de leche, el panel sigue mostrando el celo.
+            milkQualityApi.list().catch(() => [] as MilkQualityUploadSummary[]),
         ])
-            .then(([granjas, subidas, ultima, sync]) => {
-                if (vigente) setDatos({ granjas, subidas, ultima, sync });
+            .then(([granjas, subidas, ultima, sync, leche]) => {
+                if (vigente) setDatos({ granjas, subidas, ultima, sync, leche });
             })
             .catch(() => {
                 if (vigente) setError(true);
@@ -67,7 +71,12 @@ export default function Dashboard() {
         const ordenadas = [...datos.subidas].sort((a, b) => b.upload_date.localeCompare(a.upload_date));
         const analizados = datos.subidas.reduce((s, u) => s + u.total_animals, 0);
         const celo = datos.subidas.reduce((s, u) => s + u.celo_count, 0);
-        return { ultima: ordenadas[0] ?? null, analizados, celo, subidas: datos.subidas.length };
+        const muestras = datos.leche.reduce((s, u) => s + u.total_samples, 0);
+        const media = datos.leche.reduce((s, u) => s + u.upper_count, 0);
+        return {
+            ultima: ordenadas[0] ?? null, analizados, celo, subidas: datos.subidas.length,
+            subidasLeche: datos.leche.length, muestras, media,
+        };
     }, [datos]);
 
     const fechaHoy = fechaLarga();
@@ -204,15 +213,32 @@ export default function Dashboard() {
 
                 {/* Acumulado */}
                 <Card className="lg:col-span-8" index={4}>
-                    <CardHeader title="Acumulado" description="Todas las subidas de celo de este equipo." />
-                    <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
-                        <Cifra valor={numero(resumen.subidas)} etiqueta={resumen.subidas === 1 ? 'subida' : 'subidas'} />
-                        <Cifra valor={numero(resumen.analizados)} etiqueta="animales analizados" />
-                        <Cifra
-                            valor={porcentaje(resumen.analizados ? resumen.celo / resumen.analizados : null, 1)}
-                            etiqueta="de detecciones en celo"
-                            destacada
-                        />
+                    <CardHeader title="Acumulado" description="Todas las subidas de este equipo." />
+                    <div className="space-y-6">
+                        <div>
+                            <h3 className="mb-3 text-small font-medium text-ink-2">Celo</h3>
+                            <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
+                                <Cifra valor={numero(resumen.subidas)} etiqueta={resumen.subidas === 1 ? 'subida' : 'subidas'} />
+                                <Cifra valor={numero(resumen.analizados)} etiqueta="animales analizados" />
+                                <Cifra
+                                    valor={porcentaje(resumen.analizados ? resumen.celo / resumen.analizados : null, 1)}
+                                    etiqueta="de detecciones en celo"
+                                    destacada
+                                />
+                            </div>
+                        </div>
+                        <div className="border-t border-line pt-6">
+                            <h3 className="mb-3 text-small font-medium text-ink-2">Calidad de leche</h3>
+                            <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
+                                <Cifra valor={numero(resumen.subidasLeche)} etiqueta={resumen.subidasLeche === 1 ? 'subida' : 'subidas'} />
+                                <Cifra valor={numero(resumen.muestras)} etiqueta="muestras analizadas" />
+                                <Cifra
+                                    valor={porcentaje(resumen.muestras ? resumen.media / resumen.muestras : null, 1)}
+                                    etiqueta="de muestras de calidad media"
+                                    tono="warn"
+                                />
+                            </div>
+                        </div>
                     </div>
                 </Card>
 

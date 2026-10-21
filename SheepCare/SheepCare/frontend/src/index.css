@@ -33,6 +33,10 @@
     --line: #ededed;
     --line-soft: #f3f3f3;
 
+    /* Borde de campos y zonas de soltar: 3:1 como mínimo contra el panel y el
+       fondo (WCAG 1.4.11). --ink-4 (1,7:1) sirve de separador, no de límite. */
+    --control-border: #858585;
+
     /* Semánticos: solid (icono/borde), bg (fondo) y text (texto sobre el bg). */
     --ok: #2a8a3a;     --ok-bg: #e9f6ec;     --ok-text: #14723a;
     --warn: #c97000;   --warn-bg: #fef4e1;   --warn-text: #8a5a00;
@@ -67,6 +71,7 @@
     --panel: #1a2220;
     --line: #2a322f;
     --line-soft: #232a28;
+    --control-border: #707c78;
     --ink: #e8eae9;
     --ink-2: #b9bebc;
     --ink-3: #9aa5a1;
@@ -113,6 +118,7 @@
     --color-panel: var(--panel);
     --color-line: var(--line);
     --color-line-soft: var(--line-soft);
+    --color-control: var(--control-border);
     --color-ok: var(--ok);
     --color-ok-bg: var(--ok-bg);
     --color-ok-text: var(--ok-text);
@@ -207,7 +213,6 @@
     *:focus-visible {
         outline: 2px solid var(--brand-600);
         outline-offset: 2px;
-        border-radius: var(--radius-sm);
     }
 
     ::selection {

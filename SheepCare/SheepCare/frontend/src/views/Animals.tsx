@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { PawPrint, ArrowsClockwise } from '@phosphor-icons/react';
+import { PawPrint, ArrowsClockwise, MagnifyingGlass } from '@phosphor-icons/react';
 import { farmsApi, animalsApi } from '../api';
 import type { Farm, Animal } from '../api';
 import { fecha, numero } from '../lib/format';
 import {
-    Button, Card, EmptyState, ErrorState, PageHeader, SelectField, Table, TableSkeleton, Td, Th, Tr,
+    Button, Card, EmptyState, ErrorState, PageHeader, SelectField, Table, TableSkeleton, TextField, Td, Th, Tr,
 } from '../components/ui';
 
 // El backend local puede devolver el nombre de la granja junto al animal.
@@ -14,6 +14,7 @@ export default function AnimalsView() {
     const [farms, setFarms] = useState<Farm[]>([]);
     const [animals, setAnimals] = useState<AnimalConGranja[] | null>(null);
     const [farmFilter, setFarmFilter] = useState<number | ''>('');
+    const [busqueda, setBusqueda] = useState('');
     const [error, setError] = useState(false);
     const [intento, setIntento] = useState(0);
 
@@ -30,6 +31,19 @@ export default function AnimalsView() {
     }, [farmFilter, intento]);
 
     const nombreGranja = useMemo(() => new Map(farms.map(f => [f.id, f.name])), [farms]);
+
+    // La búsqueda es local: la lista ya está cargada y puede tener cientos de filas.
+    const visibles = useMemo(() => {
+        const q = busqueda.trim().toLowerCase();
+        if (!animals || !q) return animals;
+        return animals.filter(a => a.external_tag.toLowerCase().includes(q) || (a.name ?? '').toLowerCase().includes(q));
+    }, [animals, busqueda]);
+
+    const recuento = !animals || error
+        ? ''
+        : visibles && visibles.length !== animals.length
+            ? `${numero(visibles.length)} de ${numero(animals.length)} animales`
+            : animals.length === 1 ? '1 animal' : `${numero(animals.length)} animales`;
 
     const recargar = () => {
         setError(false);
@@ -56,12 +70,22 @@ export default function AnimalsView() {
                 }
             />
 
-            <div className="mb-4 max-w-xs reveal" style={{ '--i': 1 } as React.CSSProperties}>
-                <SelectField label="Granja" value={farmFilter} onChange={e => cambiarGranja(e.target.value)}>
+            <div className="mb-2 flex flex-wrap gap-4 reveal" style={{ '--i': 1 } as React.CSSProperties}>
+                <SelectField label="Granja" className="w-full sm:w-72" value={farmFilter} onChange={e => cambiarGranja(e.target.value)}>
                     <option value="">Todas las granjas</option>
                     {farms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
                 </SelectField>
+                <TextField
+                    label="Buscar"
+                    type="search"
+                    className="w-full sm:w-72"
+                    placeholder="Crotal o nombre"
+                    value={busqueda}
+                    onChange={e => setBusqueda(e.target.value)}
+                />
             </div>
+            {/* Siempre montado: al buscar o filtrar, el lector de pantalla anuncia el recuento */}
+            <p role="status" className="mb-3 min-h-5 text-small text-ink-3">{recuento}</p>
 
             <Card padded={false} index={2}>
                 {error ? (
@@ -74,8 +98,16 @@ export default function AnimalsView() {
                     <EmptyState icon={<PawPrint aria-hidden="true" />} title="Aún no hay animales">
                         Se crean automáticamente al subir un archivo de datos.
                     </EmptyState>
+                ) : visibles && visibles.length === 0 ? (
+                    <EmptyState
+                        icon={<MagnifyingGlass aria-hidden="true" />}
+                        title="Ningún animal coincide"
+                        action={<Button onClick={() => setBusqueda('')}>Quitar búsqueda</Button>}
+                    >
+                        Prueba con otro crotal o nombre.
+                    </EmptyState>
                 ) : (
-                    <Table caption="Animales registrados">
+                    <Table caption="Animales registrados" maxHeight="36rem">
                         <thead>
                             <tr>
                                 <Th align="right">N.º</Th>
@@ -86,7 +118,7 @@ export default function AnimalsView() {
                             </tr>
                         </thead>
                         <tbody>
-                            {animals.map(a => (
+                            {(visibles ?? animals).map(a => (
                                 <Tr key={a.id}>
                                     <Td numeric muted>{numero(a.id)}</Td>
                                     <Td mono strong>{a.external_tag}</Td>
