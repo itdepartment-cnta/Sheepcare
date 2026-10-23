@@ -5,6 +5,7 @@ import {
 } from '@phosphor-icons/react';
 import type { Icon } from '@phosphor-icons/react';
 import type { Tema } from '../lib/theme';
+import { FC_URL } from '../lib/config';
 
 interface Item {
     to?: string;
@@ -12,8 +13,6 @@ interface Item {
     icon: Icon;
     label: string;
 }
-
-const FC_URL = 'http://localhost:8002/';
 
 // La versión la pone el script del instalador (VITE_APP_VERSION); en desarrollo no existe.
 const VERSION = import.meta.env.VITE_APP_VERSION as string | undefined;
@@ -115,7 +114,7 @@ export default function Sidebar({ tema, onAlternarTema }: { tema: Tema; onAltern
             {/* Financiadores, versión y tema */}
             <div className="border-t border-side-line px-4 pb-4 pt-4 max-lg:px-2">
                 <p className="mb-2 text-center max-lg:hidden text-micro uppercase tracking-[0.1em] text-side-ink-2">Con el apoyo de</p>
-                <div className="grid grid-cols-2 max-lg:hidden gap-1.5 rounded-lg bg-white p-2">
+                <div className="flex flex-col max-lg:hidden gap-1.5 rounded-lg bg-white p-2">
                     <img src="/logos/Logotipo-CNTA.png" alt="CNTA" className="h-7 w-full object-contain" />
                     <img src="/logos/genovis.png" alt="Genovis" className="h-7 w-full object-contain" />
                     <img src="/logos/open-agri.png" alt="OpenAgri" className="h-7 w-full object-contain" />

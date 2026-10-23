@@ -146,7 +146,6 @@ export default function HistoryView() {
                 farms={farms}
                 id="informe-celo"
                 titulo="Informe de celo (PDF)"
-                descripcion="Resumen de la detección de celo de una granja: animales en celo, gráfica por subida y detalle."
                 descargar={reportsApi.estrusPdf}
             />
             <FarmReportCard
@@ -154,7 +153,6 @@ export default function HistoryView() {
                 farms={farms}
                 id="informe-leche"
                 titulo="Informe de calidad de leche (PDF)"
-                descripcion="Resumen de la calidad de leche (SCC) de una granja: muestras con calidad media, gráfica por subida y detalle."
                 descargar={reportsApi.milkQualityPdf}
             />
             </div>
@@ -212,7 +210,9 @@ export default function HistoryView() {
                     </EmptyState>
                 ) : (
                     <>
-                    <Table caption="Historial de resultados" minWidth="52rem" maxHeight="36rem">
+                    {/* Lo que hay encima de la tabla (cabecera, informes y filtros) mide unos 43 rem: la tabla ocupa el resto
+                        de la ventana para que la pantalla no desplace; en ventanas bajas, al menos 12 rem. */}
+                    <Table caption="Historial de resultados" minWidth="52rem" maxHeight="max(12rem, calc(100dvh - 44rem))">
                         <thead>
                             <tr>
                                 <Th>Animal</Th>

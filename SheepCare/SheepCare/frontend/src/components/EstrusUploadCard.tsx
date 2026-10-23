@@ -4,6 +4,7 @@ import { ArrowUpRight, CalendarBlank, CheckCircle, ClockCounterClockwise, Downlo
 import api, { uploadsApi } from '../api';
 import type { Farm, UploadResult } from '../api';
 import { mensajeDeError } from '../lib/errors';
+import { FC_URL } from '../lib/config';
 import { numero, porcentaje } from '../lib/format';
 import {
     avisar, Button, Card, CardHeader, Chip, ExternalButton, FileDrop, LinkButton, SelectField, Stat, Table, Td, Th, Tr,
@@ -93,7 +94,6 @@ export default function EstrusUploadCard({ farms }: { farms: Farm[] }) {
                             accept=".xlsx,.xls,.csv"
                             file={file}
                             onFile={f => { setFile(f); setErrorArchivo(''); }}
-                            hint="Columna A: identificador del animal. Después, una columna por lectura de resistencia (2 por animal)."
                         />
                         {errorArchivo && <p role="alert" className="mt-1.5 text-small font-medium text-danger-text">{errorArchivo}</p>}
                     </div>
@@ -155,7 +155,7 @@ export default function EstrusUploadCard({ farms }: { farms: Farm[] }) {
                             </Button>
                         )}
                         <LinkButton to="/history" icon={<ClockCounterClockwise size={16} aria-hidden="true" />}>Ver en el historial</LinkButton>
-                        <ExternalButton href="http://localhost:8002/" variant="ghost" icon={<CalendarBlank size={16} aria-hidden="true" />}>
+                        <ExternalButton href={FC_URL} variant="ghost" icon={<CalendarBlank size={16} aria-hidden="true" />}>
                             Ver en el calendario <ArrowUpRight size={14} aria-hidden="true" />
                         </ExternalButton>
                     </div>

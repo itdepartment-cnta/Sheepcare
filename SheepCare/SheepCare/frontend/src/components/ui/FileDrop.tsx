@@ -51,7 +51,7 @@ export function FileDrop({ label, accept, file, onFile, hint, required }: Props)
                     if (f && permitido(f)) onFile(f);
                 }}
                 className={
-                    'flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-8 text-center ' +
+                    'flex min-h-36 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-8 text-center ' +
                     'transition-[background-color,border-color] duration-200 ease-snap ' +
                     'has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-brand-600 ' +
                     (encima
@@ -89,15 +89,18 @@ export function FileDrop({ label, accept, file, onFile, hint, required }: Props)
                 )}
             </label>
 
-            {file && (
-                <button
-                    type="button"
-                    onClick={() => onFile(null)}
-                    className="inline-flex w-fit cursor-pointer items-center gap-1 rounded-sm text-small text-ink-3 transition-colors duration-200 ease-snap hover:text-ink"
-                >
-                    <X size={14} aria-hidden="true" /> Quitar archivo
-                </button>
-            )}
+            {/* Siempre ocupa su sitio: al adjuntar un archivo no debe crecer la tarjeta */}
+            <div className="h-6">
+                {file && (
+                    <button
+                        type="button"
+                        onClick={() => onFile(null)}
+                        className="inline-flex w-fit cursor-pointer items-center gap-1 rounded-sm text-small text-ink-3 transition-colors duration-200 ease-snap hover:text-ink"
+                    >
+                        <X size={14} aria-hidden="true" /> Quitar archivo
+                    </button>
+                )}
+            </div>
             {hint && <p id={`${id}-ayuda`} className="text-small text-ink-3">{hint}</p>}
         </div>
     );

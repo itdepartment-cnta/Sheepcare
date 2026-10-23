@@ -13,9 +13,19 @@ const HORA = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digi
 
 const valida = (d: Date) => !Number.isNaN(d.getTime());
 
+/**
+ * SQLite guarda las marcas de tiempo en UTC y sin zona («2026-10-23 11:30:00»), y
+ * `new Date` las tomaría por hora local: se verían con la diferencia horaria de retraso.
+ * Sin zona explícita (Z o ±hh:mm) se interpretan como UTC.
+ */
+const aFecha = (iso: string): Date => {
+    const sinZona = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(iso.trim());
+    return new Date(sinZona ? `${iso.trim().replace(' ', 'T')}Z` : iso);
+};
+
 export const fecha = (iso?: string | null): string => {
     if (!iso) return '—';
-    const d = new Date(iso);
+    const d = aFecha(iso);
     return valida(d) ? FECHA.format(d) : '—';
 };
 
@@ -23,7 +33,7 @@ export const fechaLarga = (d: Date = new Date()): string => FECHA_LARGA.format(d
 
 export const fechaHora = (iso?: string | null): string => {
     if (!iso) return '—';
-    const d = new Date(iso);
+    const d = aFecha(iso);
     return valida(d) ? FECHA_HORA.format(d) : '—';
 };
 

@@ -9,7 +9,20 @@ environment variable, or defaults to http://localhost:8002/api/v1/.
 import os
 import requests
 from typing import Optional, Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
+
+
+def _iso_utc(valor: Optional[str] = None) -> str:
+    """Instante en ISO 8601 con zona UTC explicita (Farm Calendar trabaja en UTC y
+    muestra la hora local del navegador). SQLite guarda `datetime('now')` en UTC y
+    sin zona ("2026-10-23 11:30:00"): se marca como UTC en vez de dejar que se
+    interprete como hora local. Sin valor, el instante actual."""
+    if not valor:
+        return datetime.now(timezone.utc).isoformat()
+    dt = datetime.fromisoformat(str(valor).strip())
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat()
 
 
 class FarmCalendarClient:
@@ -174,8 +187,7 @@ class FarmCalendarClient:
             True if successfully posted
         """
         self._ensure_auth()
-        if not upload_date:
-            upload_date = datetime.now().isoformat()
+        upload_date = _iso_utc(upload_date)
 
         if not details_text:
             summary_parts = []
@@ -275,8 +287,7 @@ class FarmCalendarClient:
             True if successfully posted
         """
         self._ensure_auth()
-        if not upload_date:
-            upload_date = datetime.now().isoformat()
+        upload_date = _iso_utc(upload_date)
 
         if not details_text:
             summary_parts = []
@@ -488,7 +499,7 @@ class FarmCalendarClient:
                 "name": name or external_tag,
                 "species": "Oveja",
                 "breed": "",
-                "birthdate": datetime.now().isoformat(),
+                "birthdate": _iso_utc(),
                 "sex": 1,  # Female
                 "castrated": False,
                 "hasAgriParcel": {"@type": "FarmParcel", "@id": parcel_fc_uuid},

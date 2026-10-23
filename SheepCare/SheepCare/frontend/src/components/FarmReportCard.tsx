@@ -9,7 +9,6 @@ interface Props {
     /** Id corto y unico por tarjeta: enlaza las etiquetas con sus campos. */
     id: string;
     titulo: string;
-    descripcion: string;
     descargar: (farmId: number, desde?: string, hasta?: string) => Promise<InformePdf>;
     index?: number;
 }
@@ -31,7 +30,7 @@ const mensajeDeError = (e: unknown): string => {
  * filtros de la tabla ni con otras tarjetas. Las fechas son opcionales; sin
  * ellas el informe incluye todos los datos de la granja.
  */
-export default function FarmReportCard({ farms, id, titulo, descripcion, descargar, index }: Props) {
+export default function FarmReportCard({ farms, id, titulo, descargar, index }: Props) {
     const [farmId, setFarmId] = useState<number | ''>('');
     const [desde, setDesde] = useState('');
     const [hasta, setHasta] = useState('');
@@ -71,7 +70,7 @@ export default function FarmReportCard({ farms, id, titulo, descripcion, descarg
         <Card className="h-full" index={index}>
             <CardHeader
                 title={titulo}
-                description={`${descripcion} Sin fechas, incluye todos los datos.`}
+                description="Sin fechas, incluye todos los datos."
                 icon={<FileText size={18} aria-hidden="true" />}
             />
             <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">

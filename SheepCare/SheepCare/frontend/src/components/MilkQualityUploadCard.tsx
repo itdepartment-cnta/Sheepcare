@@ -107,7 +107,6 @@ export default function MilkQualityUploadCard({ farms }: { farms: Farm[] }) {
                             accept=".xlsx,.xls"
                             file={file}
                             onFile={f => { setFile(f); setErrorArchivo(''); }}
-                            hint="Columna A: identificador de la muestra. El resto: longitudes de onda, con el esquema fijo."
                         />
                         {errorArchivo && <p role="alert" className="mt-1.5 text-small font-medium text-danger-text">{errorArchivo}</p>}
                     </div>
