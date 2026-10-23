@@ -243,7 +243,7 @@ export default function FarmsView() {
                         Crea una granja para empezar a subir datos de celo y de calidad de leche.
                     </EmptyState>
                 ) : (
-                    <Table caption="Granjas registradas" minWidth="48rem">
+                    <Table caption="Granjas registradas" minWidth="48rem" maxHeight="max(12rem, calc(100dvh - 14rem))">
                         <thead>
                             <tr>
                                 <Th align="right">N.º</Th>
