@@ -7,7 +7,7 @@
   #define AppVersion "1.0"
 #endif
 #define AppPublisher "CNTA"
-#define AppURL       "http://localhost:8000"
+#define AppURL       "http://localhost:48000"
 
 [Setup]
 AppId={{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
@@ -90,7 +90,7 @@ Type: filesandordirs; Name: "{app}"
 [Code]
 { Los servicios de SheepCare se arrancan desacoplados del lanzador y siguen vivos tras cerrar su
   ventana. Al ACTUALIZAR hay que pararlos antes de copiar ficheros: si no, Windows no deja sustituir
-  sus ejecutables y, peor, el lanzador ve el puerto 8000 ocupado ("SheepCare ya esta activo") y
+  sus ejecutables y, peor, el lanzador ve el puerto 48000 ocupado ("SheepCare ya esta activo") y
   reutiliza el backend VIEJO que sigue en memoria, sin las migraciones ni la sincronizacion nuevas. }
 
 procedure PararProceso(const Imagen: String);

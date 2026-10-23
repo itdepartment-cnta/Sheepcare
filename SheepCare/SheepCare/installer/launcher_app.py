@@ -3,6 +3,7 @@ SheepCare Launcher — arranca PostgreSQL, MongoDB, GateKeeper, FarmCalendar,
 Weather, Reporting y el Backend, luego abre el navegador. Compilado con PyInstaller como app GUI sin consola.
 """
 
+import json
 import os
 import sys
 import secrets
@@ -61,7 +62,13 @@ MONGOD_EXE     = os.path.join(BASE_DIR, "mongodb", "bin", "mongod.exe")
 WEATHER_EXE    = os.path.join(BASE_DIR, "weather", "sheepcare-weather.exe")
 REPORTING_EXE  = os.path.join(BASE_DIR, "reporting", "sheepcare-reporting.exe")
 
-APP_URL      = "http://localhost:8000"
+# Los dos puertos que abre el usuario van altos y poco comunes (8000/8002 los usan
+# otras herramientas de desarrollo, p. ej. extensiones de VS Code que se quedan con
+# 127.0.0.1:8000 y tapan al backend, que escucha en 0.0.0.0). Si se cambian aqui,
+# cambiar tambien VITE_FC_URL en build-release.ps1 y los puertos de test-bundle.ps1.
+APP_PORT     = 48000
+FC_PORT      = 48002
+APP_URL      = f"http://localhost:{APP_PORT}"
 PG_PORT      = 5433
 PG_SUPERUSER = "postgres"
 PG_USER      = "farmcalendar"
@@ -196,6 +203,37 @@ def wait_for_port(port: int, seconds: int = 30) -> bool:
     return False
 
 
+def port_listeners(port: int) -> list:
+    """Procesos que escuchan en el puerto TCP: [(direccion, pid, imagen)].
+    Se lee de netstat (sin depender del idioma de Windows: se reconoce el
+    estado de escucha por su direccion remota, 0.0.0.0:0 o [::]:0)."""
+    _, out = run_cmd_output("netstat", "-ano", "-p", "TCP")
+    found = []
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) != 5 or not parts[2].endswith(":0"):
+            continue
+        local, pid = parts[1], parts[4]
+        if local.rsplit(":", 1)[-1] != str(port) or not pid.isdigit():
+            continue
+        _, task = run_cmd_output("tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH")
+        name = task.strip().split('","')[0].strip('"') if task.strip().startswith('"') else "desconocido"
+        found.append((local.rsplit(":", 1)[0], int(pid), name))
+    return found
+
+
+def foreign_listeners(port: int) -> list:
+    """Los que escuchan en el puerto sin ser un servicio de SheepCare."""
+    return [l for l in port_listeners(port) if not l[2].lower().startswith("sheepcare-")]
+
+
+def port_conflict_message(port: int, listeners: list) -> str:
+    quien = ", ".join(sorted({f"{name} (PID {pid})" for _, pid, name in listeners}))
+    return (f"El puerto {port} lo está usando otro programa:\n{quien}\n\n"
+            "SheepCare lo necesita libre. Cierra ese programa (si es VS Code, una "
+            "extensión con servidor local como Live Server) y vuelve a abrir SheepCare.")
+
+
 # ── Secretos persistidos ──────────────────────────────────────────────────────
 def get_or_create_secret(path: str, length: int = 48) -> str:
     """Lee un secreto generado previamente o lo crea la primera vez.
@@ -323,15 +361,31 @@ def launch():
     # 1. Comprobar si ya está corriendo
     import urllib.request
     import urllib.error
+    # Solo cuenta si contesta SheepCare: otro programa con el puerto no es "ya activo".
     try:
-        urllib.request.urlopen(APP_URL, timeout=2)
-        ui_status("SheepCare ya está activo — abriendo navegador...")
-        time.sleep(0.5)
-        webbrowser.open(APP_URL)
-        ui_done()
-        return
+        with urllib.request.urlopen(APP_URL + "/api/health", timeout=3) as r:
+            health = json.load(r)
+        if health.get("status") == "ok" and "version" in health:
+            ui_status("SheepCare ya está activo — abriendo navegador...")
+            time.sleep(0.5)
+            webbrowser.open(APP_URL)
+            ui_done()
+            return
     except Exception:
         pass
+
+    # 1b. Puertos de la interfaz libres. Un programa ajeno con el puerto (aunque solo
+    # sea en 127.0.0.1) se queda con las conexiones del navegador y la pestaña no carga.
+    for puerto in (APP_PORT, FC_PORT):
+        ajenos = foreign_listeners(puerto)
+        if ajenos:
+            ui_fatal(port_conflict_message(puerto, ajenos))
+            return
+    # Un backend nuestro que escucha pero no contesta esta colgado: se sustituye.
+    for _, pid, name in port_listeners(APP_PORT):
+        if name.lower().startswith("sheepcare-backend"):
+            run_cmd("taskkill", "/F", "/PID", str(pid), timeout=15)
+            time.sleep(1)
 
     # 2. Verificar binarios necesarios
     for exe, nombre in [(PG_CTL, "pg_ctl"), (BACKEND_EXE, "backend"), (CALENDAR_EXE, "calendar"),
@@ -456,8 +510,8 @@ def launch():
             # API de login — el default es un hostname de Docker ('gatekeeper')
             # que no resuelve en esta instalación sin Docker.
             "INTERNAL_GK_URL": f"http://127.0.0.1:{GK_PORT}/",
-            "FARM_CALENDAR_API": "http://127.0.0.1:8002/api/",
-            "FARM_CALENDAR_POST_AUTH": "http://127.0.0.1:8002/post_auth/",
+            "FARM_CALENDAR_API": f"http://127.0.0.1:{FC_PORT}/api/",
+            "FARM_CALENDAR_POST_AUTH": f"http://127.0.0.1:{FC_PORT}/post_auth/",
             # WhiteNoise sirve el CSS/JS desde aquí (CompressedManifestStaticFilesStorage
             # necesita el manifest de "collectstatic"); el default cae dentro del
             # directorio de instalación, no escribible por un usuario normal.
@@ -504,7 +558,7 @@ def launch():
     os.makedirs(os.path.join(CALENDAR_RUN_DIR, "logs"), exist_ok=True)
     fc_django_secret = get_or_create_secret(FC_DJANGO_SECRET_FILE)
     cal_env = base_env.copy()
-    cal_env["APP_PORT"] = "8002"
+    cal_env["APP_PORT"] = str(FC_PORT)
     cal_env["JWT_SIGNING_KEY"] = jwt_secret
     cal_env["DJANGO_SECRET_KEY"] = fc_django_secret
     cal_env["JWT_COOKIE_NAME"] = "OpenAgriAuth"
@@ -592,7 +646,7 @@ def launch():
                 "REPORTING_SERVICE_NAME": "reporting",
                 "REPORTING_SERVICE_PORT": str(REPORTING_PORT),
                 "REPORTING_USING_GATEKEEPER": "false",
-                "REPORTING_BACKEND_CORS_ORIGINS": '["http://127.0.0.1:8000", "http://localhost:8000"]',
+                "REPORTING_BACKEND_CORS_ORIGINS": f'["http://127.0.0.1:{APP_PORT}", "http://localhost:{APP_PORT}"]',
                 "REPORTING_POSTGRES_HOST": "127.0.0.1",
                 "REPORTING_POSTGRES_PORT": str(PG_PORT),
                 "REPORTING_POSTGRES_DB": RP_DB,
@@ -613,8 +667,8 @@ def launch():
     ui_status("Iniciando SheepCare...", "")
     bk_env = base_env.copy()
     bk_env["SHEEPCARE_DB_PATH"]        = DB_PATH
-    bk_env["FARMCALENDAR_API_URL"]     = "http://127.0.0.1:8002/api/v1/"
-    bk_env["BACKEND_PORT"]             = "8000"
+    bk_env["FARMCALENDAR_API_URL"]     = f"http://127.0.0.1:{FC_PORT}/api/v1/"
+    bk_env["BACKEND_PORT"]             = str(APP_PORT)
     bk_env["FARMCALENDAR_JWT_SECRET"]  = jwt_secret
     bk_env["WEATHER_API_URL"]          = f"http://127.0.0.1:{WEATHER_PORT}"
     bk_env["WEATHER_JWT_KEY"]          = weather_jwt
@@ -624,13 +678,26 @@ def launch():
 
     # 11. Esperar al backend (max 120 s)
     ui_status("Esperando que SheepCare esté listo...", "")
+    listo = False
     for i in range(60):
         try:
-            urllib.request.urlopen(APP_URL + "/api/health", timeout=2)
-            break
+            with urllib.request.urlopen(APP_URL + "/api/health", timeout=2) as r:
+                listo = json.load(r).get("status") == "ok"
+            if listo:
+                break
         except Exception:
-            time.sleep(2)
-            ui_status("Esperando que SheepCare esté listo...", f"{(i+1)*2}s")
+            pass
+        time.sleep(2)
+        ui_status("Esperando que SheepCare esté listo...", f"{(i+1)*2}s")
+        if i % 5 == 4:  # cada 10 s: ¿se ha colado otro programa en el puerto?
+            ajenos = foreign_listeners(APP_PORT)
+            if ajenos:
+                ui_fatal(port_conflict_message(APP_PORT, ajenos))
+                return
+    if not listo:
+        ui_fatal("SheepCare no ha llegado a arrancar.\n\n"
+                 f"Revisa el registro en:\n{os.path.join(APPDATA, 'backend-startup.log')}")
+        return
 
     # 12. Abrir navegador y cerrar launcher
     ui_status("¡Listo! Abriendo SheepCare...", "")

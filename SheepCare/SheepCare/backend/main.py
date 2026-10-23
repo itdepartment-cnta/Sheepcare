@@ -69,7 +69,7 @@ app = FastAPI(
 # CORS - allow frontend dev server and production
 origins = os.environ.get(
     "CORS_ORIGINS",
-    "http://localhost:5173,http://localhost:3000,http://localhost:8002",
+    "http://localhost:5173,http://localhost:3000,http://localhost:8002,http://localhost:48002",
 ).split(",")
 
 app.add_middleware(

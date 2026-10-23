@@ -147,7 +147,7 @@ if (-not $BackendOnly) {
     $calEnv["POSTGRES_DB"]   = $PG_DB
     $calEnv["POSTGRES_USER"] = $PG_USER
     $calEnv["POSTGRES_PASSWORD"] = $PG_PASS
-    $calEnv["APP_PORT"] = "8002"
+    $calEnv["APP_PORT"] = "48002"
     $calEnv["DJANGO_SECRET_KEY"] = "test-secret-key"
     $calEnv["JWT_SIGNING_KEY"] = $JWT_SECRET
 
@@ -164,8 +164,8 @@ if (-not $BackendOnly) {
 Write-Host "[3] Backend FastAPI..." -ForegroundColor Yellow
 $bkEnv = [System.Collections.Generic.Dictionary[string,string]]::new()
 $bkEnv["SHEEPCARE_DB_PATH"]    = $dbpath
-$bkEnv["FARMCALENDAR_API_URL"] = "http://127.0.0.1:8002/api/v1/"
-$bkEnv["BACKEND_PORT"]         = "8000"
+$bkEnv["FARMCALENDAR_API_URL"] = "http://127.0.0.1:48002/api/v1/"
+$bkEnv["BACKEND_PORT"]         = "48000"
 if (-not $BackendOnly) {
     $bkEnv["POSTGRES_HOST"]     = "127.0.0.1"
     $bkEnv["POSTGRES_PORT"]     = "$PG_PORT"
@@ -183,12 +183,12 @@ foreach ($k in $bkEnv.Keys) { $psi2.EnvironmentVariables[$k] = $bkEnv[$k] }
 $bkProc = [System.Diagnostics.Process]::Start($psi2)
 
 # ── Esperar al backend ────────────────────────────────────────────────────────
-Write-Host "  Esperando http://localhost:8000/api/health..." -NoNewline
+Write-Host "  Esperando http://localhost:48000/api/health..." -NoNewline
 $ready = $false
 for ($i=0; $i -lt 30; $i++) {
     Start-Sleep 2; Write-Host "." -NoNewline
     try {
-        $r = Invoke-WebRequest http://localhost:8000/api/health -TimeoutSec 2 -UseBasicParsing -EA Stop
+        $r = Invoke-WebRequest http://localhost:48000/api/health -TimeoutSec 2 -UseBasicParsing -EA Stop
         if ($r.StatusCode -lt 400) { $ready = $true; break }
     } catch {}
 }
@@ -197,9 +197,9 @@ if ($ready) {
     Write-Host " OK" -ForegroundColor Green
     Write-Host ""
     Write-Host "=== Bundle funcionando ===" -ForegroundColor Green
-    Write-Host "  Frontend: http://localhost:8000"
-    Write-Host "  API:      http://localhost:8000/api/health"
-    Write-Host "  Calendar: http://localhost:8002"
+    Write-Host "  Frontend: http://localhost:48000"
+    Write-Host "  API:      http://localhost:48000/api/health"
+    Write-Host "  Calendar: http://localhost:48002"
     Write-Host ""
     Write-Host "Para detener: .\installer\test-bundle.ps1 -StopAll" -ForegroundColor DarkGray
 } else {

@@ -93,6 +93,8 @@ if (-not $SkipFrontend) {
     try {
         # La interfaz muestra esta versión en el menú lateral
         $env:VITE_APP_VERSION = $Version
+        # Enlace al calendario: mismo puerto que FC_PORT en launcher_app.py
+        $env:VITE_FC_URL = 'http://localhost:48002/'
         & npm run build
         if ($LASTEXITCODE -ne 0) { Write-Error 'Fallo npm run build' }
     } finally { Pop-Location }
@@ -131,10 +133,26 @@ if (-not $SkipCalendar) {
 if (-not $SkipGatekeeper) {
     Write-Host "`n[3.5] PyInstaller — GateKeeper (Django)..." -ForegroundColor Yellow
     Push-Location $Root
+    # El hook de Django de PyInstaller ejecuta django.setup() al analizar, y
+    # settings.py exige estas variables. Solo hacen falta para el analisis: el
+    # launcher inyecta las reales al arrancar el servicio.
+    $gkBuildVars = [ordered]@{
+        DJANGO_SECRET_KEY = 'solo-para-compilar'
+        JWT_SIGNING_KEY   = 'solo-para-compilar'
+        # Gana a la DATABASE_URL de plantilla de gatekeeper\.env (puerto literal "PORT")
+        DATABASE_URL = 'postgres://build:build@localhost:5432/build'
+    }
+    $gkSet = @()
+    foreach ($v in $gkBuildVars.Keys) {
+        if (-not (Test-Path "env:$v")) { Set-Item "env:$v" $gkBuildVars[$v]; $gkSet += $v }
+    }
     try {
         & $Pyinstaller sheepcare_gatekeeper.spec --distpath (Join-Path $InstallerDir 'dist') --workpath (Join-Path $InstallerDir 'build') --noconfirm
         if ($LASTEXITCODE -ne 0) { Write-Error 'Fallo PyInstaller (gatekeeper)' }
-    } finally { Pop-Location }
+    } finally {
+        foreach ($v in $gkSet) { Remove-Item "env:$v" -ErrorAction SilentlyContinue }
+        Pop-Location
+    }
     Write-Host '  OK' -ForegroundColor Green
 } else {
     Write-Host "`n[3.5] GateKeeper: omitido (-SkipGatekeeper)" -ForegroundColor DarkGray
